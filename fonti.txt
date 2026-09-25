@@ -1,0 +1,279 @@
+FONTI -- multiPhiMo
+====================
+Raccolte analizzando tutti gli script e i programmi del progetto (root, analyzer/,
+native/plugins/MultiPhiMo/, native/tools/, _archive/). Il codice delle librerie di terze
+parti incluse (native/dpf, native/oscpack, native/pocketfft) non e' stato analizzato: le
+librerie sono elencate tra il software usato (categoria 8), le loro licenze sono in
+native/THIRD_PARTY_LICENSES.md.
+
+Per ogni voce: riferimento bibliografico, poi (->) dove e' usata nel progetto.
+Riferimenti completati e aggiornati il 2026-09-25: dove nel codice compariva solo il nome
+di un metodo o di un autore, qui e' riportata la pubblicazione originale. Link e DOI
+indicati sono quelli verificati.
+Ordine alfabetico per primo autore (o per nome, se non c'e' un autore) dentro ogni categoria.
+
+
+1. MODELLI FISICI E SINTESI (eccitatori, risonatori)
+----------------------------------------------------
+- Berdahl, E., Sheffield, E., Pfalz, A., Marasco, A. T. (2018). "Widening the Razor-Thin
+  Edge of Chaos Into a Musical Highway: Connecting Chaotic Maps to Digital Waveguides".
+  Proc. NIME 2018, pp. 390-393. doi:10.5281/zenodo.1302637
+  https://www.nime.org/proceedings/2018/nime2018_paper0087.pdf
+  -> exciters.py chaos(), Exciters.hpp
+- Cook, P. R. (1997). "Physically Informed Sonic Modeling (PhISM): Synthesis of Percussive
+  Sounds". Computer Music Journal 21(3), pp. 38-49. (versione precedente: Proc. ICMC 1996)
+  -> exciters.py shaker() ("PhISM/PhISEM (Cook 1996-97)"), Exciters.hpp
+- Cook, P. R., Scavone, G. P. (1999). "The Synthesis ToolKit (STK)". Proc. International
+  Computer Music Conference (ICMC) 1999, Pechino. https://ccrma.stanford.edu/software/stk/
+  -> exciters.py bow() ("struttura STK Bowed"), blow() ("tabella d'ancia STK Clarinet"),
+     Exciters.hpp
+- Fletcher, N. H., Rossing, T. D. (1998). The Physics of Musical Instruments, 2a ed.
+  Springer, New York. (Anche per le leggi di scala modali di trave di Euler-Bernoulli e
+  piastra di Kirchhoff-Love usate in resonator.py _fundamental_freq.)
+  -> resonator.py MODE_RATIOS, agents.py, Resonator.hpp, _archive/pre_pitch_lock/resonator.py
+- Hunt, K. H., Crossley, F. R. E. (1975). "Coefficient of restitution interpreted as damping
+  in vibroimpact". Journal of Applied Mechanics 42(2), pp. 440-445.
+  -> exciters.py strike() (contatto hertziano/Hunt-Crossley), Exciters.hpp
+- Ishizaka, K., Flanagan, J. L. (1972). "Synthesis of voiced sounds from a two-mass model of
+  the vocal cords". Bell System Technical Journal 51(6), pp. 1233-1268.
+  -> exciters.py vocal() (piega vocale a 2 masse), Exciters.hpp
+- Jaffe, D. A., Smith, J. O. (1983). "Extensions of the Karplus-Strong plucked-string
+  algorithm". Computer Music Journal 7(2), pp. 56-69.
+  -> exciters.py pluck() ("Jaffe & Smith 1983"), Exciters.hpp
+- Karplus, K., Strong, A. (1983). "Digital synthesis of plucked-string and drum timbres".
+  Computer Music Journal 7(2), pp. 43-55.
+  -> exciters.py pluck() (Karplus-Strong esteso), Exciters.hpp
+- Levine, H., Schwinger, J. (1948). "On the radiation of sound from an unflanged circular
+  pipe". Physical Review 73(4), pp. 383-406.
+  -> resonator.py tube (correzione d'estremita' non flangiata), Resonator.hpp,
+     _archive/scripts_oneoff/_apply_new_resonators_1.py
+- Lorenz, E. N. (1963). "Deterministic nonperiodic flow". Journal of the Atmospheric
+  Sciences 20(2), pp. 130-141.
+  -> resonator.py chaotic (_lorenz_rk4, sigma=10, rho=28, beta=8/3), Resonator.hpp
+- McIntyre, M. E., Schumacher, R. T., Woodhouse, J. (1983). "On the oscillations of musical
+  instruments". Journal of the Acoustical Society of America 74(5), pp. 1325-1345.
+  -> exciters.py bow()/blow() (McIntyre-Woodhouse-Schumacher), Exciters.hpp
+- Mindlin, G. B., Laje, R. (2005). The Physics of Birdsong. Springer, Berlin (collana
+  Biological and Medical Physics, Biomedical Engineering).
+  -> exciters.py bird() (forma normale di Mindlin-Laje), Exciters.hpp,
+     _archive/scripts_oneoff/scan_bird_regimes.py
+- Smith, J. O. (1986). "Efficient simulation of the reed-bore and bow-string mechanisms".
+  Proc. ICMC 1986, L'Aia, pp. 275-280.
+  -> exciters.py bow() ("Smith 1986", tabella d'attrito), blow(), Exciters.hpp
+- Smith, J. O. Physical Audio Signal Processing (libro online, CCRMA, Stanford University;
+  materiale del corso MUS420). https://ccrma.stanford.edu/~jos/pasp/
+  -> exciters.py bow() ("stile Smith/CCRMA MUS420"), Exciters.hpp
+
+
+2. ANALISI AUDIO E DESCRITTORI (MIR, pitch, psicoacustica)
+----------------------------------------------------------
+- de Cheveigne, A., Kawahara, H. (2002). "YIN, a fundamental frequency estimator for speech
+  and music". Journal of the Acoustical Society of America 111(4), pp. 1917-1930.
+  -> _archive/pre_pitch_lock/descriptors.py (YIN), Descriptors.hpp pitchAutocorr (non piu' usato)
+- Harte, C., Sandler, M., Gasser, M. (2006). "Detecting harmonic change in musical audio".
+  Proc. 1st ACM Workshop on Audio and Music Computing Multimedia (AMCMM '06), Santa
+  Barbara, pp. 21-26.
+  -> analyzer/descriptors.py harmonic_tension (6D Tonal Centroid), Descriptors.hpp
+- ISO/IEC 15938-4:2002. Information technology -- Multimedia content description
+  interface -- Part 4: Audio (MPEG-7 Audio, descrittori di basso livello).
+  -> analyzer/descriptors.py spectral_rolloff ("MPEG-7/Peeters 2004")
+- Krimphoff, J., McAdams, S., Winsberg, S. (1994). "Caracterisation du timbre des sons
+  complexes. II: Analyses acoustiques et quantification psychophysique". Journal de
+  Physique IV 4(C5), pp. 625-628.
+  -> analyzer/descriptors.py inharmonicity ("Krimphoff et al. 1994")
+- McLeod, P., Wyvill, G. (2005). "A smarter way to find pitch". Proc. International Computer
+  Music Conference (ICMC) 2005, Barcellona.
+  https://www.cs.otago.ac.nz/graphics/Geoff/tartini/papers/A_Smarter_Way_to_Find_Pitch.pdf
+  -> analyzer/descriptors.py pitch_mpm (MPM, dal 2026-09-24), Descriptors.hpp pitchMpm,
+     exciters.py bird() (calibrazione), audio-in del plugin (AudioInAnalyzer.hpp),
+     _archive/scripts_oneoff/audit_estimators.py
+- Peeters, G. (2004). "A large set of audio features for sound description (similarity and
+  classification) in the CUIDADO project". Rapporto tecnico del progetto IST CUIDADO, IRCAM.
+  -> analyzer/descriptors.py centroid/spread/flatness/rolloff/inharmonicity, Descriptors.hpp
+- Terhardt, E. (1974). "Pitch, consonance, and harmony". Journal of the Acoustical Society of
+  America 55(5), pp. 1061-1069.
+  -> analyzer/descriptors.py (ambiguita' del pitch), resonator.py
+- Vassilakis, P. N. (2001). Perceptual and Physical Properties of Amplitude Fluctuation and
+  their Musical Significance. Tesi di dottorato, University of California, Los Angeles.
+  -> analyzer/descriptors.py roughness, Descriptors.hpp
+
+
+3. MORPHING SPETTRALE (SpectralMorph.hpp, ricerca del 2026-09-25)
+-----------------------------------------------------------------
+Citate nel codice:
+- Amatriain, X., Bonada, J., Loscos, A., Serra, X. (2001). "Spectral Modeling for
+  Higher-level Sound Transformations". MOSART Workshop on Current Research Directions in
+  Computer Music, Barcellona. http://mtg.upf.edu/files/publications/mosart2001-xamat.pdf
+  -> SpectralMorph.hpp (modello sinusoidi + residuo)
+- Caetano, M., Rodet, X. (2011). "Sound morphing by feature interpolation". Proc. IEEE
+  International Conference on Acoustics, Speech and Signal Processing (ICASSP 2011), Praga.
+  https://www.researchgate.net/publication/224245822_Sound_morphing_by_feature_interpolation
+  -> SpectralMorph.hpp
+- Haken Audio. "Additive Sound Morphing". https://www.hakenaudio.com/addsoundmorph
+  -> SpectralMorph.hpp
+- Serra, X., Smith, J. O. (1990). "Spectral Modeling Synthesis: a sound analysis/synthesis
+  system based on a deterministic plus stochastic decomposition". Computer Music Journal
+  14(4), pp. 12-24.
+  -> SpectralMorph.hpp (Spectral Modeling Synthesis)
+
+Consultate per la scelta del metodo (non citate nel codice):
+- Caetano, M. (2021). "Morphing Musical Instrument Sounds with the Sinusoidal Model in the
+  Sound Morphing Toolbox". In Kronland-Martinet, R., Ystad, S., Aramaki, M. (a cura di),
+  Perception, Representations, Image, Sound, Music (CMMR 2019), Lecture Notes in Computer
+  Science 12631, Springer, pp. 481-503. doi:10.1007/978-3-030-70210-6_31
+- Laroche, J., Dolson, M. (1997). "Phase-vocoder: about this phasiness business". Proc. IEEE
+  Workshop on Applications of Signal Processing to Audio and Acoustics (WASPAA 1997),
+  New Paltz. https://ieeexplore.ieee.org/document/625603/
+- Laroche, J., Dolson, M. (1999). "Improved phase vocoder time-scale modification of audio".
+  IEEE Transactions on Speech and Audio Processing 7(3), pp. 323-332.
+- MeldaProduction MMorph, recensione MusicTech.
+  https://musictech.com/reviews/meldaproduction-mmorph-review/
+- Prusa, Z., Holighaus, N. (2017). "Phase Vocoder Done Right". Proc. 25th European Signal
+  Processing Conference (EUSIPCO 2017), Kos. arXiv:2202.07382
+  https://www.eurasip.org/Proceedings/Eusipco/Eusipco2017/papers/1570343436.pdf
+- Roddy, M., Walker, J. (2014). "A Method of Morphing Spectral Envelopes of the Singing
+  Voice for Use with Backing Vocals". Proc. 17th International Conference on Digital Audio
+  Effects (DAFx-14), Erlangen.
+  https://dafx14.fau.de/papers/dafx14_matthew_roddy_a_method_of_morphing_spec.pdf
+- SMS Tools, Music Technology Group, Universitat Pompeu Fabra.
+  https://www.upf.edu/web/mtg/sms-tools
+- Zynaptiq MORPH. https://www.zynaptiq.com/morph/
+
+
+4. CONVERSIONE DI FREQUENZA DI CAMPIONAMENTO E FILTRI (plugin, 2026-09-25)
+---------------------------------------------------------------------------
+- Butterworth, S. (1930). "On the theory of filter amplifiers". Wireless Engineer 7,
+  pp. 536-541.
+  -> exciters.py blow()/chaos() (passa-alto in uscita, scipy.signal.butter/sosfilt),
+     Exciters.hpp butterHighpassSos/sosFilt
+- Kaiser, J. F. (1974). "Nonrecursive digital filter design using the I0-sinh window
+  function". Proc. IEEE International Symposium on Circuits and Systems (ISCAS 1974),
+  pp. 20-23.
+  -> Resampler.hpp (sinc con finestra di Kaiser)
+- Smith, J. O., Gossett, P. (1984). "A flexible sampling-rate conversion method". Proc.
+  IEEE ICASSP 1984, San Diego, vol. 2, pp. 19.4.1-19.4.2.
+  Tutorial: Smith, J. O. "Digital Audio Resampling Home Page". https://ccrma.stanford.edu/~jos/resample/
+  -> Resampler.hpp (tabella polifase con interpolazione tra fasi, rapporto arbitrario)
+
+Consultate per la scelta della strategia (non citate nel codice):
+- JUCE Forum. "Doubts about handling different sample rates in audio plugin".
+  https://forum.juce.com/t/doubts-about-handling-different-sample-rates-in-audio-plugin/27595
+- KVR Audio Forum. "Plugin with internal samplerate, is it a good solution?".
+  https://www.kvraudio.com/forum/viewtopic.php?t=562023
+- Vaneev, A. r8brain-free-src (Voxengo, licenza MIT; valutata e non adottata).
+  https://github.com/avaneev/r8brain-free-src
+
+
+5. APPRENDIMENTO AUTOMATICO E MODELLI GENERATIVI
+------------------------------------------------
+- Bishop, C. M. (1994). "Mixture Density Networks". Rapporto tecnico NCRG/94/004, Neural
+  Computing Research Group, Aston University.
+  -> agents.py (MDN), MdnAgent.hpp
+- Engel, J., Agrawal, K. K., Chen, S., Gulrajani, I., Donahue, C., Roberts, A. (2019).
+  "GANSynth: Adversarial Neural Audio Synthesis". ICLR 2019. arXiv:1902.08710
+  -> _archive/scape_pulse/spectral_repr.py
+- Ho, J., Jain, A., Abbeel, P. (2020). "Denoising Diffusion Probabilistic Models". NeurIPS
+  2020. arXiv:2006.11239
+  -> _archive/scape_pulse (training DDPM)
+- Karras, T., Aila, T., Laine, S., Lehtinen, J. (2018). "Progressive Growing of GANs for
+  Improved Quality, Stability, and Variation". ICLR 2018. arXiv:1710.10196
+  -> _archive/scape_pulse/neural_models.py (MinibatchStdDev)
+- Kingma, D. P., Ba, J. (2015). "Adam: A Method for Stochastic Optimization". ICLR 2015.
+  arXiv:1412.6980
+  -> agents.py (torch.optim.Adam)
+- Song, J., Meng, C., Ermon, S. (2021). "Denoising Diffusion Implicit Models". ICLR 2021.
+  arXiv:2010.02502
+  -> _archive/scape_pulse/sample_pulse.py (DDIM)
+
+
+6. METODI NUMERICI, OTTIMIZZAZIONE, CAMPIONAMENTO
+-------------------------------------------------
+- Durand, E. (1960). Solutions numeriques des equations algebriques, Tome I. Masson, Parigi.
+  Kerner, I. O. (1966). "Ein Gesamtschrittverfahren zur Berechnung der Nullstellen von
+  Polynomen". Numerische Mathematik 8, pp. 290-294.
+  (metodo di Durand-Kerner, detto anche di Weierstrass)
+  -> Descriptors.hpp durandKerner (radici del polinomio LPC, formanti)
+- Levinson, N. (1947). "The Wiener RMS (root mean square) error criterion in filter design
+  and prediction". Journal of Mathematics and Physics 25, pp. 261-278.
+  Durbin, J. (1960). "The fitting of time-series models". Revue de l'Institut International
+  de Statistique 28(3), pp. 233-244.
+  -> analyzer/descriptors.py formants, Descriptors.hpp lpcLevinson
+- Kutta, W. (1901). "Beitrag zur naeherungsweisen Integration totaler
+  Differentialgleichungen". Zeitschrift fuer Mathematik und Physik 46, pp. 435-453.
+  (metodo di Runge-Kutta del 4o ordine, RK4)
+  -> resonator.py chaotic, Resonator.hpp
+- Sobol, I. M. (1967). "On the distribution of points in a cube and the approximate
+  evaluation of integrals". USSR Computational Mathematics and Mathematical Physics 7(4),
+  pp. 86-112.
+  -> dataset_gen.py (scipy.stats.qmc.Sobol), _archive/scripts_oneoff/check_new_exciters.py
+- Spall, J. C. (1992). "Multivariate stochastic approximation using a simultaneous
+  perturbation gradient approximation". IEEE Transactions on Automatic Control 37(3),
+  pp. 332-341.
+  -> param_candidate.py (SPSA-live)
+- Wiener, N. (1930). "Generalized harmonic analysis". Acta Mathematica 55, pp. 117-258.
+  Khintchine, A. (1934). "Korrelationstheorie der stationaeren stochastischen Prozesse".
+  Mathematische Annalen 109, pp. 604-615.
+  (teorema di Wiener-Khinchin: autocorrelazione via FFT)
+  -> analyzer/descriptors.py, Descriptors.hpp, exciters.py noise()
+
+
+7. ACCORDATURE E SCALE
+----------------------
+- Bohlen, H. (1978). "13 Tonstufen in der Duodezime". Acustica 39(2), pp. 76-86.
+  Mathews, M. V., Pierce, J. R., Reeves, A., Roberts, L. A. (1988). "Theoretical and
+  experimental explorations of the Bohlen-Pierce scale". Journal of the Acoustical Society
+  of America 84(4), pp. 1214-1222.
+  -> tuning.py (scala di Bohlen-Pierce, periodo 3/1)
+- Op de Coul, M. Scala, formato file .scl (Huygens-Fokker Foundation).
+  https://www.huygens-fokker.org/scala/scl_format.html
+  -> tuning.py load_scl, TuningQuantizer.hpp parseScl
+- Ratan, N. scale-library. https://github.com/narenratan/scale-library
+  -> raccolta di file .scl usata come materiale di prova per l'import (non inclusa nel
+     progetto e non usata dal codice)
+
+
+8. SOFTWARE E LIBRERIE
+----------------------
+Incluse nel plugin (licenze in native/THIRD_PARTY_LICENSES.md):
+- DejaVu Sans (font, licenza Bitstream Vera/Arev), incluso in DPF. https://dejavu-fonts.github.io/
+  -> testo della GUI del plugin
+- DPF -- DISTRHO Plugin Framework (Filipe Coelho, licenza ISC).
+  https://github.com/DISTRHO/DPF -> plugin VST3, GUI DGL (native/dpf, con patch
+  MultiPhiMo in DistrhoPluginVST.hpp/DistrhoPluginVST3.cpp)
+- NanoVG (Mikko Mononen, licenza zlib), incluso in DPF. https://github.com/memononen/nanovg
+  -> disegno della GUI (UiWidgets.hpp, UIMultiPhiMo.cpp)
+- oscpack (Ross Bencina, licenza MIT-like). http://www.rossbencina.com/code/oscpack
+  -> native/oscpack, ricezione OSC nel plugin
+- PocketFFT (Martin Reinecke, Max-Planck-Society, BSD-3; la stessa FFT usata da NumPy).
+  https://github.com/mreineck/pocketfft -> native/pocketfft, Exciters.hpp, Descriptors.hpp
+- pugl (David Robillard, licenza ISC), incluso in DPF. https://github.com/lv2/pugl
+  -> finestre della GUI
+- stb_truetype / stb_image (Sean Barrett, pubblico dominio o MIT), inclusi in NanoVG.
+  https://github.com/nothings/stb -> rendering dei font della GUI
+
+Usate dal prototipo Python:
+- librosa (librosa.feature.tonnetz, citata come riferimento, non installata).
+  https://librosa.org -> analyzer/descriptors.py
+- numba (opzionale, accelera bird/vocal). https://numba.pydata.org -> requirements.txt
+- NumPy. https://numpy.org -> tutti gli script Python
+- python-osc. https://github.com/attwad/python-osc -> descriptor_input.py
+- PyTorch. https://pytorch.org -> agents.py, native/tools/export_weights.py
+- SciPy (signal, stats.qmc, spatial.cKDTree). https://scipy.org -> exciters.py, analyzer/,
+  dataset_gen.py, knn_corpus.py, pair_selector.py
+- sounddevice. https://python-sounddevice.readthedocs.io -> play_engine.py, audio_input.py
+- soundfile. https://python-soundfile.readthedocs.io -> script di render/test
+- The Synthesis ToolKit in C++ (STK) -- vedi Cook & Scavone, categoria 1.
+- Tkinter (libreria standard Python). -> gui.py
+
+
+9. ALTRE FONTI WEB
+------------------
+- DPF, issue #345: pseudo-parametri MIDI CC visibili nell'automazione degli host.
+  https://github.com/DISTRHO/DPF/issues/345
+  -> patch MultiPhiMo a DistrhoPluginVST3.cpp (lista CC ridotta ai soli CC usati)
+- Samplestack. "Seamless loops for sustained samples".
+  https://samplestack.app/news/seamless-loops-for-sustained-samples/
+  -> candidate_process.py (crossfade dei retrigger di sustain)
+- Surge XT, issue #7584: ingresso audio sommato all'uscita di uno strumento in Reaper.
+  https://github.com/surge-synthesizer/surge/issues/7584
+  -> scelta dell'ingresso sidechain del plugin (PluginMultiPhiMo.cpp initAudioPort)

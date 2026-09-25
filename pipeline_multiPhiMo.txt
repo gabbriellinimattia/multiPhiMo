@@ -1,0 +1,108 @@
+PIPELINE — SYNTH FISICO MULTI-AGENTE (multiPhiMo)
+Documento pensato come prompt one-shot per una singola sessione di sviluppo.
+Vincoli di progetto: nessun audio reale in training, latenza runtime <=25ms, matching solo sui valori dei descrittori (non timbrico: configurazioni diverse possono soddisfare lo stesso target).
+
+====================================================================
+1. DESCRITTORI: ELENCO E MODO DI RICAVARLI
+====================================================================
+Fonte: sinestools.univie.ac.at (analizzatori di segnale/spettro). Selezionato un sottoinsieme compatto e ortogonale (8-12 scalari) per contenere la dimensionalità in ingresso agli agenti.
+
+- Spectral centroid: baricentro delle ampiezze nello spettro (FFT). Indica luminosità/brightness.
+- Spectral spread: dispersione (varianza) attorno al centroide.
+- Spectral flatness: rapporto media geometrica/aritmetica del modulo spettro. Distingue componente tonale vs rumorosa.
+- Roughness: dissonanza sensoriale tra parziali vicini in banda critica (modello Sethares/Vassilakis). Corrisponde al "Roughness Estimator" SInES.
+- Harmonic tension: tensione armonica/colore tonale (modello tipo spiral-array/Chew). "Harmonic Tension Analyser" SInES.
+- Formanti (F1-F3): picchi dell'inviluppo spettrale via LPC o cepstrum. "Formants Estimator" SInES.
+- Modulazione (rate+depth): analisi dell'inviluppo di ampiezza (o FFT dell'envelope) per vibrato/tremolo. "Modulation Power House" SInES.
+- Inviluppo temporale: attack time (tempo al picco RMS) e decay time (tempo a -60dB). Calcolo diretto nel dominio del tempo, non richiede l'analizzatore SInES.
+- Pitch (opzionale, se rilevante al gesto/risonatore): stima per autocorrelazione o algoritmo tipo YIN/Essentia.
+
+Metodo di estrazione: STFT con finestra 1024-2048 campioni, hop 50%, librerie di riferimento coerenti con SInES (meyda.js, js-xtract.js, Essentia.js) per la fase di analisi/dataset; per il runtime, reimplementazione nativa leggera (C++/Rust/JUCE) degli stessi algoritmi, per restare nel budget di latenza.
+
+====================================================================
+2. ECCITATORI: STATO DELL'ARTE E FUNZIONAMENTO
+====================================================================
+
+BOW (archetto)
+Meccanismo: attrito stick-slip non lineare tra crine e corda, modellato con curva di attrito differenziale (classico McIntyre-Woodhouse-Schumacher) accoppiata a una digital waveguide della corda.
+Stato dell'arte: modelli con dinamica del crine e attrito termico a larghezza finita per maggiore playability; formulazioni a due polarizzazioni con forze di contatto e attrito non lineari per sintesi gesto-based.
+Parametri tipici: forza arco, velocità, posizione sul manico, materiale/tensione corda.
+Riferimenti: J.O. Smith, "Digital Waveguide Modeling of Bowed Strings" (CCRMA MUS420); "Playability of a bowed string physical model including finite-width thermal friction and hair dynamics"; "Two-Polarisation Physical Model of Bowed Strings with Nonlinear Contact and Friction Forces" (MDPI Applied Sciences 2016); Frontiers in Signal Processing 10.3389/frsip.2025.1525044.
+
+BLOW (fiati)
+Meccanismo: sorgente aeroacustica da turbolenza al bordo (edge tone) o da ancia, accoppiata al risonatore del tubo; il rumore turbolento è filtrato spettralmente dal feedback acustico.
+Stato dell'arte: simulazione a onde (wave-based) del getto d'aria in tempo reale ("Aerophones in flatland", ACM TOG 2015) per interattività; modelli a due masse per ance singole/doppie come alternativa più leggera.
+Parametri tipici: pressione, apertura/imboccatura, velocità del getto, geometria del bordo.
+Riferimenti: "Turbulence Noise in Flue Instruments"; Fletcher & Rossing, aeroacustica degli strumenti musicali; "Aerophones in flatland: interactive wave simulation of wind instruments" (Chen et al., ACM TOG 34(4), 2015).
+
+STRIKE (percussione/impatto)
+Meccanismo: forza di contatto non lineare (modello hertziano/Hunt-Crossley) tra martelletto e superficie, che inietta energia impulsiva nel risonatore.
+Stato dell'arte: modelli non lineari di contatto validati percettivamente per sintesi di collisioni; rendering audio fisicamente basato del contatto.
+Parametri tipici: massa e rigidità del martelletto, coefficiente di restituzione, velocità/punto di impatto.
+Riferimenti: "Modeling collision sounds: Non-linear contact force" (Avanzini, Rocchesso); "Physically-based audio rendering of contact" (van den Doel, Pai); "Modeling manner of contact in the synthesis of impact sounds" (JASA 2011).
+
+PLUCK (corda pizzicata)
+Meccanismo: eccitazione impulsiva iniettata in una digital waveguide (corda), spesso tramite commuted synthesis: il corpo risonante è "commutato" (convoluto) nell'eccitazione invece che sintetizzato a parte, riducendo il costo.
+Stato dell'arte: Karplus-Strong esteso (Jaffe & Smith 1983) con filtri di decadimento e dispersione calibrabili; commuted waveguide synthesis con espressione performativa.
+Parametri tipici: posizione del pizzico, durezza plettro/dito, tempo di decadimento, dispersione.
+Riferimenti: Jaffe & Smith, "Extensions of the Karplus-Strong Plucked-String Algorithm"; D. Jaffe, "Performance Expression in Commuted Waveguide Synthesis of Plucked/Bowed Strings"; J.O. Smith, CCRMA "Physical Modeling Synthesis Update".
+
+SHAKER (shaker/maraca/idiofoni a particelle)
+Meccanismo: molte particelle indipendenti che collidono stocasticamente contro le pareti di una cavità risonante; il numero atteso di collisioni segue una distribuzione tipo Poisson.
+Stato dell'arte: Physically Informed Sonic Modeling (PhISM, Cook 1996-97), tuttora riferimento per shaker/maraca digitali efficienti; implementazioni embedded real-time.
+Parametri tipici: numero di particelle, energia media, tasso di decadimento, densità delle collisioni.
+Riferimenti: P. Cook, "Physically Informed Sonic Modeling (PhISM): Percussive Synthesis" (ICMC 1996/97); "Embedded Digital Shakers: Handheld Physical Modeling Synthesizers" (NIME 2018).
+
+NOISE (eccitazione stocastica a banda larga)
+Meccanismo: rumore bianco/rosa sagomato spettralmente (o via linear prediction) per ottenere texture controllabili senza componente periodica.
+Stato dell'arte: sound texture modeling con linear prediction per texture stazionarie; approcci recenti differenziabili/statistici per texture sintesi/analisi.
+Parametri tipici: colore spettrale, densità, correlazione temporale.
+Riferimenti: "Sound Texture Modelling with Linear Prediction" (Zhu & Wyse, DAFX); "A statistics-driven differentiable approach for sound texture synthesis and analysis" (2025).
+
+CHAOS (eccitazione da sistemi dinamici non lineari)
+Meccanismo: mappe caotiche (logistiche, Chua, Lorenz) usate come generatori di eccitazione, spesso accoppiate direttamente a strutture a waveguide.
+Stato dell'arte: connessione diretta di mappe caotiche a digital waveguide per controllo timbrico; esplorazione di oscillatori caotici parametrizzati per sintesi sonora.
+Parametri tipici: parametri di biforcazione, tasso di accoppiamento, condizioni iniziali.
+Riferimenti: "Connecting Chaotic Maps to Digital Waveguides" (NIME 2018); "Exploring the Sound of Chaotic Oscillators via Parameter Mapping" (DAFx 2019); "Chaotic Systems as 3D Height Maps for Sound Synthesis" (2024).
+
+====================================================================
+3. RISONATORE: STATO DELL'ARTE E FUNZIONAMENTO
+====================================================================
+Requisito: materiale e dimensioni variabili in tempo reale, entro il budget di 25ms totali.
+
+Famiglie a confronto:
+- Modal synthesis: banco di risonatori del secondo ordine (uno per modo: frequenza, smorzamento, ampiezza). Costo O(numero modi), facilmente interpolabile in tempo reale → adatto a cambi continui di materiale/dimensione senza discontinuità. Riferimento: "Fast modal synthesis by digital waveguide extraction".
+- Digital waveguide mesh (2D/3D, incl. banded waveguide mesh): propaga onde su una griglia, supporta forme arbitrarie; costo maggiore della modal synthesis ma ancora gestibile per mesh piccole in real time. Riferimenti: "The banded digital waveguide mesh"; "Acoustic Modeling Using the Digital Waveguide Mesh".
+- Finite-Difference Time-Domain (FDTD) su piastre/membrane non lineari (progetto NESS, Bilbao): massima accuratezza fisica e realismo nella variazione di materiale (rigidità, tensione, smorzamento, non linearità), ma costo computazionale elevato — spesso non real-time-safe per mesh dense entro 25ms senza forte ottimizzazione/GPU. Riferimenti: NESS Project (Bilbao et al., Computer Music Journal 43(2-3)); "Numerical Sound Synthesis: Finite Difference Schemes and Simulation in Musical Acoustics"; "Sound synthesis for nonlinear plates".
+
+Raccomandazione: banco modale come motore runtime principale (garantisce il vincolo di latenza), con set di modi/smorzamenti pre-calcolati per alcuni materiali/geometrie di riferimento (es. via FDTD offline) e interpolazione/morphing continuo tra questi set per ottenere il cambiamento percepito di materiale e dimensione senza ricalcolo fisico completo a runtime.
+
+====================================================================
+4. SVILUPPO DEL DATASET (SOLO SINTETICO, NESSUN AUDIO REALE)
+====================================================================
+1. Definire, per ciascuno dei 7 eccitatori e per il risonatore, lo spazio dei parametri con range fisicamente plausibili.
+2. Campionare lo spazio con Latin Hypercube Sampling (o sequenze di Sobol) per copertura uniforme; ordine di grandezza indicativo: 5.000-20.000 campioni per eccitatore, scalabile in base ai tempi di render.
+3. Campionamento congiunto eccitatore+risonatore (non solo l'eccitatore da solo), perché il timbro/i descrittori finali dipendono dall'accoppiamento.
+4. Render offline di ogni combinazione (durata breve, 0.5-2s, sufficiente a stabilizzare i descrittori) — non vincolato ai 25ms in questa fase.
+5. Analisi di ogni render con la stessa pipeline di descrittori definita in sezione 1, per garantire coerenza fra dati di training e motore di inferenza runtime.
+6. Filtro qualità: scartare configurazioni degeneri (silenzio, clipping, instabilità numerica dei modelli fisici — rischio noto con FDTD/modal a parametri estremi).
+7. Split train/validation/test stratificato per tipo di eccitatore.
+8. Data augmentation leggera via jitter dei parametri di controllo (velocity, timing) quando il motore lo consente parametricamente, per aumentare la robustezza senza nuovi render pesanti.
+9. Versionamento del dataset (hash dei parametri + versione del motore di sintesi), perché il motore fisico può evolvere nel tempo.
+Il dataset risultante è la coppia (parametri_synth -> descrittori); invertito, allena la mappa (descrittori -> parametri) usata dagli agenti.
+
+====================================================================
+5. ANALISI DEI MODELLI IA PER L'INVERSE MAPPING (DESCRITTORI -> PARAMETRI)
+====================================================================
+Requisiti: inferenza sub-10ms (margine nel budget di 25ms), regressione da vettore compatto (8-12 dim) a decine di parametri synth, training solo su dati sintetici, gestione esplicita della non-unicità (più configurazioni possono dare gli stessi descrittori — desiderato dal progetto).
+
+Famiglie valutate:
+- MLP piccola (2-4 layer): costo di inferenza trascurabile, adatta come mapping diretto. Limite: tende a mediare tra soluzioni multiple valide (mode averaging) se il mapping è multi-modale.
+- Mixture Density Network (MDN) su base MLP: modella esplicitamente la multimodalità dell'inverse mapping — indicata qui perché il progetto accetta e desidera che configurazioni diverse soddisfino lo stesso target di descrittori.
+- Gradient boosting / random forest: baseline solida per regressione tabellare a bassa dimensionalità, inferenza rapidissima, utile come confronto di riferimento prima di introdurre reti neurali.
+- CNN su rappresentazione tempo-frequenza (stile InverSynth, Barkan et al. 2019): pensata per input audio grezzo; qui l'input sono già descrittori scalari, quindi è overkill e più lenta — da scartare per il ramo runtime, eventualmente utile offline se si volesse condizionare anche su spettro completo.
+- Differentiable DSP / DDSP (Engel et al. 2020) e derivati real-time (DDSP timbre remap, NIME 2024): utili se si rende differenziabile il motore di sintesi per training end-to-end; qui il motore è fisico e solo parzialmente differenziabile (più semplice per modal synthesis, difficile per stick-slip/turbolenza) — da considerare come estensione futura, non come prima scelta.
+- Ricerca evolutiva (algoritmi genetici, es. NetSyn/Yee-King et al. 2018): troppo lenta per il runtime (richiede molte valutazioni iterative del synth); utile solo offline per generare/validare dataset o come benchmark di qualità.
+- Variational Autoencoder sullo spazio dei parametri (Esling et al.): utile per organizzare lo spazio dei parametri e campionare soluzioni diverse a parità di descrittori target; combinabile come decoder con MDN/MLP.
+
+Raccomandazione: per ciascuno degli 8 agenti (7 eccitatori + risonatore), MDN leggera (o MLP con variabile latente campionata per rompere l'ambiguità) allenata sul dataset sintetico invertito; baseline di confronto con gradient boosting. Nessuna ricerca iterativa a runtime: l'inferenza è diretta e a costo costante. Un forward-model surrogate (rete gemella o gradient boosting) resta uno strumento solo offline, per validazione e data augmentation, mai nel loop realtime.

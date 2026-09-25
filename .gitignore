@@ -1,0 +1,18 @@
+# Cartelle locali non pubblicate
+_archive/
+release/
+dataset/
+
+# Prodotti di build del plugin
+native/build/
+native/bin/
+native/dpf/build/
+*.o
+*.d
+*.a
+
+# Python / sistema / log
+__pycache__/
+*.pyc
+.DS_Store
+*.log

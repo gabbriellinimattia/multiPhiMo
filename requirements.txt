@@ -1,0 +1,7 @@
+numpy
+scipy
+soundfile
+torch
+sounddevice
+python-osc
+numba  # opzionale: bird/vocal (loop per-campione ~100x piu' veloce, fallback Python puro)
