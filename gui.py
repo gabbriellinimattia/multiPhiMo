@@ -25,6 +25,8 @@ from tkinter import filedialog, ttk
 
 import tuning
 from agents import DESCRIPTOR_KEYS, EXCITER_PARAM_RANGES, RESONATOR_SHAPES, descriptor_keys_for
+# 2026-09-26: nome mostrato (chiave interna invariata): harmonic_tension misura la concentrazione tonale.
+DISPLAY_NAMES = {"harmonic_tension": "tonal_focus"}
 from audio_input import AudioDescriptorSource
 from candidate_process import CandidateProcessHandle
 from descriptor_input import DescriptorInput
@@ -316,7 +318,7 @@ class App:
         for i, k in enumerate(self._relevant_keys()):
             lo, hi = _slider_bounds(k, self._exciter_name)
             lo_real, hi_real = _agent_range(k, self._exciter_name)
-            ttk.Label(self.sliders_frame, text=f"{k}  [{lo_real:.4g}-{hi_real:.4g}]",
+            ttk.Label(self.sliders_frame, text=f"{DISPLAY_NAMES.get(k, k)}  [{lo_real:.4g}-{hi_real:.4g}]",
                       width=32).grid(row=i, column=0, sticky="w")
             var = tk.DoubleVar(value=(lo + hi) / 2.0)
             slider = ttk.Scale(self.sliders_frame, from_=lo, to=hi, variable=var, orient="horizontal",

@@ -21,8 +21,8 @@
 
 #define DISTRHO_PLUGIN_HAS_UI          1
 #define DISTRHO_UI_USE_NANOVG          1
-#define DISTRHO_UI_DEFAULT_WIDTH       760
-#define DISTRHO_UI_DEFAULT_HEIGHT      500  // 2026-09-25: +40 per la riga Morph
+#define DISTRHO_UI_DEFAULT_WIDTH       1136  // 2026-09-28: +376 colonna Accoppiamento
+#define DISTRHO_UI_DEFAULT_HEIGHT      540  // 2026-09-28: +40 popup Preset;  // 2026-09-25: +40 per la riga Morph
 #define DISTRHO_UI_USER_RESIZABLE      1
 // Round 3.3b: browser file DGL (NSOpenPanel su macOS) per UI::requestStateFile -- il default
 // DPF e' 0 (DistrhoPluginChecks.h); richiede DGL_USE_FILE_BROWSER, gia' attivo di default

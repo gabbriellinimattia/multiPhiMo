@@ -35,6 +35,8 @@
 #include "DistrhoUI.hpp"
 #include "UiWidgets.hpp"
 #include "ParamRanges.hpp"
+#include "DatasetPresets.hpp"  // 2026-09-28: menu Preset (build_dataset_presets.py)
+#include "Coupling.hpp"  // 2026-09-28: kCouplingSpecs, couplingNormalize/Denormalize
 #include "TuningQuantizer.hpp"
 
 #include <algorithm>
@@ -59,8 +61,8 @@ using DGL_NAMESPACE::Color;
 
 // ---------------------------------------------------------------------------------
 
-static constexpr uint kUiWidth  = 760;
-static constexpr uint kUiHeight = 500;  // 2026-09-25: +40 per la riga Morph (y=468)
+static constexpr uint kUiWidth  = 1136;  // 2026-09-28: +376 per la colonna Accoppiamento (Manual)
+static constexpr uint kUiHeight = 540;  // 2026-09-28: +40, popup del menu Preset (20 righe)  // 2026-09-25: +40 per la riga Morph (y=468)
 
 // Pulsante Play (round 3.1): note/canale arbitrari, il pitch resta governato SOLO dal
 // descrittore target (Agent) o dallo slot "freq" (Manual), mai dal numero di nota --
@@ -128,6 +130,14 @@ public:
             editParameter(kParameterExciterSelect, false);
         };
 
+        // 2026-09-28: preset di descrittori dal dataset (Mode=Agent + eccitatore + risonatore + 15 descrittori)
+        fPresetChoice = new CycleChoice(this);
+        fPresetChoice->setAbsolutePos(760, 8);
+        fPresetChoice->setSize(240, 32);
+        fPresetChoice->setTitle("Preset");
+        fPresetChoice->setOptions(phimo::kDatasetPresetLabels, phimo::kDatasetPresetCount);
+        fPresetChoice->onChanged = [this](uint32_t idx) { applyPreset(idx); };
+
         fResonatorChoice = new CycleChoice(this);
         fResonatorChoice->setAbsolutePos(304, 8);
         fResonatorChoice->setSize(160, 32);
@@ -184,7 +194,7 @@ public:
             Slider* const s = new Slider(this);
             s->setAbsolutePos(kColX[col], kTopY + row * (kSliderH + kRowGap));
             s->setSize(kSliderW, kSliderH);
-            s->setName(kDescriptorNames[d]);
+            s->setName(kDescriptorDisplayNames[d]);
             s->setRange(kDescriptorRanges[d].lo, kDescriptorRanges[d].hi, kDescriptorRanges[d].logScale);
             s->setValueQuiet(kDescriptorRanges[d].def);
             fDescriptorValue[d] = kDescriptorRanges[d].def;
@@ -292,6 +302,28 @@ public:
             fResonatorParamSliders[s] = sl;
         }
 
+        // 2026-09-28: 10 slot d'accoppiamento v5 (Coupling.hpp), terza colonna, solo in Manual
+        for (uint32_t s = 0; s < (uint32_t)phimo::kCouplingCount; ++s)
+        {
+            const phimo::CouplingSpec& cs = phimo::kCouplingSpecs[s];
+            Slider* const sl = new Slider(this);
+            sl->setAbsolutePos(760, kTopY + s * (kSliderH + kRowGap));
+            sl->setSize(kSliderW, kSliderH);
+            sl->setName(cs.name);
+            sl->setRange(cs.lo, cs.hi, cs.logScale);
+            fCouplingRaw[s] = phimo::couplingNormalize(phimo::kCouplingManualDefaults[s], cs);
+            sl->setValueQuiet(phimo::kCouplingManualDefaults[s]);
+            sl->onDragStart = [this, s]() { editParameter(kParameterCouplingFirst + s, true); };
+            sl->onDragEnd   = [this, s]() { editParameter(kParameterCouplingFirst + s, false); };
+            sl->onChanged   = [this, s](float physicalValue)
+            {
+                const float norm = phimo::couplingNormalize(physicalValue, phimo::kCouplingSpecs[s]);
+                fCouplingRaw[s] = norm;
+                setParameterValue(kParameterCouplingFirst + s, norm);
+            };
+            fCouplingSliders[s] = sl;
+        }
+
         // -------- riga Scale/tuning (round 3.3a) -- sempre visibile, entrambe le viste --------
         // y=428, h=32: spazio libero sotto l'ultima riga degli slot manuali risonatore
         // (10 slot: 52 + 9*38 = 394, +34 = 428 -- esattamente il margine lasciato dai 460px
@@ -357,6 +389,7 @@ public:
         // (sliders compresi) mentre e' aperto.
         fPopup = new DropdownPopup(this);
         fExciterChoice->setPopup(fPopup);
+        fPresetChoice->setPopup(fPopup);
         fResonatorChoice->setPopup(fPopup);
         fScaleChoice->setPopup(fPopup);
 
@@ -501,6 +534,14 @@ protected:
                 fResonatorParamSliders[s]->setValueQuiet(paramSpecDenormalize(value, (*fCurrentResonatorSpec)[s]));
             return;
         }
+
+        if (index >= kParameterCouplingFirst && index <= kParameterCouplingLast)
+        {
+            const uint32_t s = index - kParameterCouplingFirst;
+            fCouplingRaw[s] = value;
+            fCouplingSliders[s]->setValueQuiet(phimo::couplingDenormalize(value, phimo::kCouplingSpecs[s]));
+            return;
+        }
     }
 
     // Round 3.2/3.3a: spinte dal DSP quando la UI si connette (mai "live" mentre resta
@@ -602,6 +643,9 @@ private:
     float fDescriptorValue[15];  // valore host corrente (non clampato al range GUI)
     Slider* fExciterParamSliders[9];
     Slider* fResonatorParamSliders[10];
+    Slider* fCouplingSliders[phimo::kCouplingCount];
+    CycleChoice* fPresetChoice;
+    float fCouplingRaw[phimo::kCouplingCount];
     DropdownPopup* fPopup;
 
     // Round 3.3a
@@ -624,6 +668,28 @@ private:
     // Mostra/nasconde i 15 descrittori (Agent) contro gli slot manuali (Manual) -- vista
     // esclusiva, mai entrambe visibili insieme (richiesto dall'utente 2026-09-23: "in mode
     // manual dovrei vedere i controlli diretti dei synth", non i descrittori assieme).
+    // Preset dal dataset: stessi parametri host che l'utente muoverebbe a mano; parameterChanged() chiamato
+    // direttamente aggiorna i widget per la stessa via dell'host (DSP: syncDescriptorsToExciter clampa al range).
+    void setHostParam(uint32_t index, float v)
+    {
+        editParameter(index, true);
+        setParameterValue(index, v);
+        editParameter(index, false);
+        parameterChanged(index, v);
+    }
+
+    void applyPreset(uint32_t idx)
+    {
+        if (idx >= phimo::kDatasetPresetCount)
+            return;
+        const phimo::DatasetPreset& p = phimo::kDatasetPresets[idx];
+        setHostParam(kParameterMode, 0.0f);
+        setHostParam(kParameterExciterSelect, static_cast<float>(p.exciter));
+        setHostParam(kParameterResonatorSelect, static_cast<float>(p.resonator));
+        for (uint32_t d = 0; d < 15; ++d)
+            setHostParam(kParameterDescriptorFirst + d, p.d[d]);
+    }
+
     void updateViewForMode(bool manual)
     {
         for (uint32_t d = 0; d < 15; ++d)
@@ -644,6 +710,8 @@ private:
             fExciterParamSliders[s]->setVisible(manual && s < excCount);
         for (uint32_t s = 0; s < 10; ++s)
             fResonatorParamSliders[s]->setVisible(manual && s < resCount);
+        for (uint32_t s = 0; s < (uint32_t)phimo::kCouplingCount; ++s)
+            fCouplingSliders[s]->setVisible(manual);
 
         repaint();
     }

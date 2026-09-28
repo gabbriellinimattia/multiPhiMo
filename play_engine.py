@@ -78,13 +78,13 @@ def _estimate_duration(cand):
     durata minima necessaria a contenere il decadimento reale e si estende il render
     di conseguenza, senza mai accorciarlo sotto il default originale."""
     default_dur = inspect.signature(EXCITERS[cand.exciter_name]).parameters["duration"].default
-    try:
-        _, damping_times, _ = resonator_params(shape=cand.resonator_shape, **cand.resonator_params)
-        reso_decay = max(damping_times) * _DURATION_MARGIN
-    except Exception:
-        reso_decay = 0.0
-    exc_decay = cand.exciter_params.get("decay_time", 0.0)
-    return float(np.clip(max(default_dur, reso_decay, exc_decay), default_dur, _MAX_DURATION))
+    # 2026-09-27: stessa stima del dataset (eccitazione exc_hold + coda del risonatore), tetto _MAX_DURATION
+    from resonator import note_duration
+    d = note_duration(default_dur, cand.resonator_shape, cand.resonator_params,
+                      cand.resonator_params.get("exc_hold"), cap=_MAX_DURATION)
+    if "exc_hold" not in cand.resonator_params:  # vecchio routing: tiene il comportamento precedente
+        d = max(d, default_dur, min(float(cand.exciter_params.get("decay_time", 0.0)), _MAX_DURATION))
+    return float(d)
 
 
 class _Voice:

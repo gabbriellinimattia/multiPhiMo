@@ -6,7 +6,7 @@ NAME = MultiPhiMo
 # Versione del plugin: UNICA fonte (passata al codice con -DMPM_VERSION_*, usata dal nome
 # dello zip di release). Per una nuova release basta cambiare questi tre numeri.
 VERSION_MAJOR = 0
-VERSION_MINOR = 1
+VERSION_MINOR = 2
 VERSION_PATCH = 0
 VERSION = $(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)
 
@@ -18,39 +18,21 @@ FILES_DSP = \
 	../../oscpack/ip/posix/NetworkingUtils.cpp \
 	../../oscpack/ip/posix/UdpSocket.cpp
 
-# oscpack e' vendorizzato in native/oscpack (round 3, solo lato ricezione UDP: i file
-# posix/ bastano per macOS/Linux, la variante ip/win32/*.cpp andra' aggiunta quando si
-# buildera' su Windows -- vedi claude/vst3_native_stato.md).
-
-# GUI (punto 8A, round 1) -- DGL/NanoVG, nessun toolkit esterno/asset bitmap (deciso con
-# l'utente 2026-09-23). DISTRHO_PLUGIN_HAS_UI=1 in DistrhoPluginInfo.h attiva la build.
-# Ripristinata 2026-09-23 dopo un tentativo di GUI generica host (troppi parametri
-# visibili, vedi stato doc) -- questi file non erano stati toccati nel frattempo.
 FILES_UI = \
 	UIMultiPhiMo.cpp
 
 CXXFLAGS += -I../../oscpack
 CXXFLAGS += -DMPM_VERSION_MAJOR=$(VERSION_MAJOR) -DMPM_VERSION_MINOR=$(VERSION_MINOR) -DMPM_VERSION_PATCH=$(VERSION_PATCH)
-# Il motore nativo (Engine.hpp/VoiceEngine.hpp/...) usa variabili inline constexpr e altre
-# feature C++17 -- Makefile.base.mk fissa -std=gnu++11 prima di $(CXXFLAGS), l'override qui
-# (ultimo -std sulla riga di comando vince) lo alza a C++17 (2026-09-22, punto 7d).
+# C++17 (Makefile.base.mk fissa -std=gnu++11 prima di $(CXXFLAGS): l'ultimo -std vince)
 CXXFLAGS += -std=c++17
-# DPF (Makefile.base.mk) forza -ffast-math in BASE_OPTS per tutti i plugin -- questo
-# rompe la semantica IEEE di isnan()/isinf() (assunta 'mai NaN/Inf' dall'ottimizzatore,
-# che puo' quindi eliminare i controlli come se fossero sempre falsi). Il motore usa
-# isnan come sentinella (drain OSC in PluginMultiPhiMo.cpp, bestDist in KnnCorpus.hpp)
-# -- causa diagnosticata del bug 'nessun cambiamento in DAW' 2026-09-22: il drain OSC
-# sovrascriveva ogni parametro con un valore NaN ad ogni blocco audio perche' il check
-# 'if not isnan' risultava sempre vero. L'override (ultimo -f vince) ripristina la
-# semantica IEEE corretta.
+# DPF forza -ffast-math: ripristina la semantica IEEE (vedi claude/vst3_native_stato.md, bug B punto 7d)
 CXXFLAGS += -fno-fast-math
 
 include ../../dpf/Makefile.plugins.mk
 
-# Dati del motore DENTRO il bundle (2026-09-25, punto 8D): pesi MDN, corpus KNN e corpus
-# del selettore in <bundle>/Contents/Resources/data, letti dal plugin con getResourcePath
-# di DPF. Ricopiati a ogni `make vst3` (cartella ricreata: nessun file stantio).
-# Esclusi scale-library/ e i CSV (non usati dal codice).
+# Dati del motore DENTRO il bundle (<bundle>/Contents/Resources/data), letti con getResourcePath.
+# 2026-09-28 (0.2.0): surrogati v5 (native/data/surrogate, export_surrogate.py) + corpus del selettore;
+# pesi MDN e corpus KNN non piu' usati.
 DATA_SRC = ../../data
 DATA_DST = $(TARGET_DIR)/$(NAME).vst3/Contents/Resources/data
 
@@ -58,13 +40,11 @@ vst3: vst3-data
 
 vst3-data: $(vst3)
 	rm -rf $(DATA_DST)
-	mkdir -p $(DATA_DST)/weights
-	cp $(DATA_SRC)/knn_corpus.bin $(DATA_SRC)/selector_corpus.bin $(DATA_DST)/
-	cp $(DATA_SRC)/weights/*.bin $(DATA_DST)/weights/
+	mkdir -p $(DATA_DST)/surrogate
+	cp $(DATA_SRC)/selector_corpus.bin $(DATA_DST)/
+	cp $(DATA_SRC)/surrogate/*.bin $(DATA_DST)/surrogate/
 
-# Release macOS (Apple Silicon, macOS 11+), 2026-09-25: build da zero, firma ad hoc
-# gratuita, zip con plugin + README + licenze. Gli oggetti di oscpack vanno cancellati a
-# mano perche' DPF li scrive accanto ai sorgenti, non in native/build.
+# Release macOS (Apple Silicon, macOS 11+): build da zero, firma ad hoc, zip con plugin + README + licenze.
 RELEASE_DIR = ../../bin
 RELEASE_ZIP = $(NAME)-$(VERSION)-macOS-arm64.zip
 

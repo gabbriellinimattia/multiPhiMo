@@ -353,7 +353,9 @@ inline std::vector<float> pluck(double duration, double freq, double pluckPositi
     }
     std::vector<double> buf = burst;
 
-    const double decayPerSample = std::exp(-6.91 / (std::max(decayTime, 0.01) * sr));
+    // 2026-09-28 (exciters.py 26/9): attenuazione PER GIRO di corda (un campione ricircola una volta ogni
+    // sr/freq campioni) -- prima era per campione, decadimento ~sr/freq volte piu' lento, decay_time quasi inerte.
+    const double decayPerSample = std::exp(-6.91 / (std::max(decayTime, 0.01) * freq));
     const double apCoef = -disp * 0.5;
     double ax = 0.0, ay = 0.0;   // allpass di dispersione
     double tx = 0.0, ty = 0.0;   // allpass di accordatura
@@ -899,7 +901,7 @@ inline std::vector<float> vocalOrig(double duration, double freq, double ps, dou
 // solo originale -> non intonato.
 inline std::vector<float> vocal(double duration, double freq, double ps, double gap, double foldQ,
                                  double kcScale, double jaw, double tongue, double f3, double tilt,
-                                 int sr = kResonatorSR, unsigned rngSeed = 0, double coreW = 0.9) {
+                                 int sr = kResonatorSR, unsigned rngSeed = 0, double coreW = 0.5) {  // 0.5: exciters.py 26/9
     const int n = (int)(duration * sr);
     const std::vector<float> colF = vocalOrig(duration, freq, ps, gap, foldQ, kcScale, jaw, tongue, f3, tilt,
                                               sr, rngSeed);

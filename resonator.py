@@ -396,32 +396,135 @@ def _resonant_mode(x, freq, damping_time, sr=SR):
     return sg.lfilter([1.0], a, x)
 
 
-# Cap sui tempi di decadimento dei modi (pitch per costruzione, audit 2026-09-24): con f0 dell'eccitatore noto,
-# tau <= PITCH_CAP_K/f0 (al piu' K periodi di f0) e tau <= PITCH_CAP_Q/(pi*f_m) (Q massimo per modo): il risonatore
-# colora (formanti/armoniche alle SUE frequenze assolute) senza poter "suonare" come nota propria e spostare il pitch.
-PITCH_CAP_K = 2.0
-PITCH_CAP_Q = 4.0
+# 2026-09-26: cap sui decadimenti (PITCH_CAP_K/Q, 2026-09-24) ELIMINATO -- rendeva il risonatore un EQ quasi piatto
+# (loss e modulazioni di chaotic a 0 dB, diag_param_effect.py). Sostituito dallo stadio di ACCOPPIAMENTO, 3 parametri
+# comuni a tutte le forme (appresi dagli agenti, non vincoli fissi):
+#   harmonicity (0-1): ogni modo viene spostato verso l'armonica di f0 piu' vicina, f' = f*(k*f0/f)^h, e l'uscita passa
+#     da modi PILOTATI alle proprie frequenze (h=0, inarmonico) a filtro lineare sulle armoniche (h=1, pitch netto);
+#   pitch_focus (0-1): quota dell'uscita risonante data da un modo dedicato ESATTAMENTE su f0 (fondamentale percepita);
+#   body (0-1): equilibrio eccitatore secco (0) / risonatore (1), a RMS unitari.
+# Senza f0 (None) harmonicity e pitch_focus non hanno effetto. Default (0, 0, 1) = risonatore libero senza accoppiamento.
+COUPLING_RANGES = dict(harmonicity=(0.0, 1.0), pitch_focus=(0.0, 1.0), body=(0.0, 1.0),
+                       exc_attack=(0.001, 0.5), exc_hold=(0.03, 3.0), am_rate=(0.5, 20.0), am_depth=(0.0, 1.0))
+COUPLING_DEFAULTS = dict(harmonicity=0.0, pitch_focus=0.0, body=1.0)
+# 2026-09-27 (deciso con l'utente): ATTACCO all'eccitatore, DECADIMENTO al risonatore. Stadio d'eccitazione applicato
+# all'eccitazione PRIMA del risonatore: exc_attack (s, salita a coseno rialzato), exc_hold (s, durata dell'eccitazione,
+# poi rilascio di 20 ms), am_rate/am_depth (tremolo dell'eccitazione). Il decadimento dopo exc_hold e' la coda propria
+# del risonatore (loss -> T60 dei modi; il modo di pitch_focus usa la mediana dei tau dei modi). None = stadio assente.
+COUPLING_LOG = {"exc_attack", "exc_hold", "am_rate"}
+EXC_RELEASE = 0.02  # s
+# 2026-09-26c: PROTOTIPO filtro formantico (non ancora in COUPLING_RANGES: dataset/surrogato invariati finche'
+# diag_jacobian.py non conferma che serve). form_amt = quota del segnale passata per 2 passa-banda (Q~4) su F1/F2.
+FORMANT_RANGES = dict(form_f1=(200.0, 1000.0), form_f2=(600.0, 3200.0), form_amt=(0.0, 1.0))
+FORMANT_LOG = {"form_f1", "form_f2"}
+# 2026-09-26d: attivato (diag_jacobian.py: costo di controllo ridotto su quasi tutti i descrittori) -> dataset_v4.
+COUPLING_RANGES.update(FORMANT_RANGES)
+COUPLING_LOG |= FORMANT_LOG
+
+
+def _formant_filter(y, sr, f1, f2, amt):
+    out = np.zeros_like(y)
+    for f, g in ((f1, 1.0), (f2, 0.7)):
+        f = float(min(max(f, 50.0), 0.45 * sr))
+        bw = f / 4.0
+        b, a = sg.butter(2, [max(f - bw / 2, 20.0) / (0.5 * sr), min(f + bw / 2, 0.49 * sr) / (0.5 * sr)], btype="band")
+        out += g * sg.lfilter(b, a, y)
+    return (1.0 - amt) * _unit_rms(y) + amt * _unit_rms(out)
+
+
+def _exc_envelope(n, sr, exc_attack=None, exc_hold=None, am_rate=None, am_depth=None):
+    t = np.arange(n) / sr
+    g = np.ones(n)
+    if exc_attack is not None:
+        ta = max(float(exc_attack), 1e-4)
+        g = np.where(t < ta, 0.5 - 0.5 * np.cos(np.pi * np.minimum(t / ta, 1.0)), 1.0)
+    if exc_hold is not None:
+        th = max(float(exc_hold), 1e-3)
+        g = g * np.clip(1.0 - (t - th) / EXC_RELEASE, 0.0, 1.0)
+    if am_rate is not None and am_depth is not None and am_depth > 0:
+        g = g * (1.0 - float(am_depth) * (0.5 - 0.5 * np.cos(2.0 * np.pi * float(am_rate) * t)))
+    return g
+
+
+def note_duration(default, shape, rp, exc_hold=None, cap=3.0):
+    """Durata del render (dataset e runtime): eccitazione (exc_hold, o la durata di default) + coda del risonatore
+    (3 tau del modo piu' lungo), fra 0.5 s e cap."""
+    try:
+        geo = {k: v for k, v in rp.items() if k in PARAM_RANGES[shape]}
+        tail = 3.0 * float(np.max(resonator_params(shape=shape, **geo)[1]))
+    except Exception:
+        tail = 0.0
+    hold = float(exc_hold) if exc_hold else float(default)
+    return float(np.clip(hold + tail, 0.5, cap))
+
+
+def _unit_rms(x):
+    x = np.asarray(x, dtype=np.float64)
+    return x / (np.sqrt(np.mean(x * x)) + EPS)
+
+
+def _driven_modes(x, freqs, damping_times, gains, sr=SR):
+    """2026-09-26: modi PILOTATI -- ogni modo suona alla SUA frequenza (sinusoide), con ampiezza = energia
+    dell'eccitazione nella sua banda (passa-banda Q~6, raddrizzato, inviluppo con rilascio = tau del modo).
+    Serve perche' un filtro lineare su un'eccitazione periodica resta armonico (inharmonicity inchiodata ~0.02
+    in diag_control.py): cosi' un eccitatore sostenuto fa "cantare" i modi inarmonici del corpo (come una barra
+    ad arco), e harmonicity li riporta sulle armoniche."""
+    x = np.asarray(x, dtype=np.float64)
+    n = len(x)
+    t = np.arange(n) / sr
+    y = np.zeros(n)
+    for i, (f, dt, g) in enumerate(zip(freqs, damping_times, gains)):
+        f = float(min(max(f, 20.0), 0.45 * sr))
+        bw = f / 6.0
+        lo, hi = max(f - bw / 2, 10.0), min(f + bw / 2, 0.49 * sr)
+        b, a = sg.butter(2, [lo / (0.5 * sr), hi / (0.5 * sr)], btype="band")
+        e = np.abs(sg.lfilter(b, a, x))
+        c = np.exp(-1.0 / (max(float(dt), 2e-3) * sr))
+        env = sg.lfilter([1.0 - c], [1.0, -c], e)
+        y += g * env * np.sin(2.0 * np.pi * f * t + 0.7 * i)
+    return y
+
+
+def _harmonize(freqs, f0, h):
+    freqs = np.asarray(freqs, dtype=np.float64)
+    if f0 is None or f0 <= 0 or h <= 0:
+        return freqs
+    k = np.maximum(np.round(freqs / f0), 1.0)
+    return freqs * ((k * f0) / freqs) ** float(np.clip(h, 0.0, 1.0))
 
 
 def apply_resonator(excitation, shape="bar", size=None, aspect=None, thickness=None,
                      density=None, stiffness=None, loss=None, mode_falloff=0.5,
                      n_modes=None, sr=SR, radius=None, closure=None, flare=None, ortho=None,
                      cavity=None, hole=None, nonlin=None, beat=None, depth=None, chaos=None, speed=None,
-                     f0=None, cap_k=PITCH_CAP_K, cap_q=PITCH_CAP_Q):
+                     f0=None, harmonicity=None, pitch_focus=None, body=None,
+                     exc_attack=None, exc_hold=None, am_rate=None, am_depth=None,
+                     form_f1=None, form_f2=None, form_amt=None):
     """
     Fa passare 'excitation' (es. l'output di un eccitatore in exciters.py) attraverso il banco
     modale definito da forma/dimensione/materiale. Ritorna audio float32 normalizzato (picco 0.9).
     Costo O(n_modes) sull'intero buffer: dentro il budget 25ms per la reimplementazione runtime.
     `chaotic` e' non lineare (loop per-campione, numba consigliato); invariante al livello d'ingresso.
-    f0: Hz, `freq` dell'eccitatore (= pitch target). Se dato (> 0) applica il cap sui decadimenti dei modi
-    (cap_k periodi di f0, cap_q come Q massimo per modo); None = comportamento precedente (nessun cap).
+    f0: Hz, `freq` dell'eccitatore (= pitch target): riferimento di harmonicity/pitch_focus (vedi COUPLING_RANGES).
+    harmonicity/pitch_focus/body: stadio di accoppiamento (None = COUPLING_DEFAULTS).
     """
     freqs, damping_times, gains = resonator_params(
         shape, size, aspect, thickness, density, stiffness, loss, mode_falloff, n_modes,
         radius, closure, flare, ortho, cavity, hole, nonlin, beat, depth, chaos, speed)
-    if f0 is not None and f0 > 0:
-        damping_times = np.minimum(np.asarray(damping_times, dtype=np.float64), float(cap_k) / float(f0))
-        damping_times = np.minimum(damping_times, float(cap_q) / (np.pi * np.maximum(np.asarray(freqs, dtype=np.float64), 1.0)))
+    if exc_attack is not None or exc_hold is not None or (am_rate is not None and am_depth):
+        excitation = np.asarray(excitation, dtype=np.float64) * _exc_envelope(len(excitation), sr, exc_attack, exc_hold,
+                                                                               am_rate, am_depth)
+    h = COUPLING_DEFAULTS["harmonicity"] if harmonicity is None else float(harmonicity)
+    pf = COUPLING_DEFAULTS["pitch_focus"] if pitch_focus is None else float(pitch_focus)
+    bd = COUPLING_DEFAULTS["body"] if body is None else float(body)
+    has_f0 = f0 is not None and f0 > 0
+    freqs = _harmonize(freqs, f0 if has_f0 else None, h)
+    keep = freqs < 0.45 * sr
+    if not np.any(keep):
+        keep[0] = True
+    freqs = freqs[keep]
+    damping_times = np.asarray(damping_times, dtype=np.float64)[keep]
+    gains = np.asarray(gains, dtype=np.float64)[keep]
     if shape == "chaotic":
         pm = {**_DEFAULTS["chaotic"], **{k: v for k, v in dict(nonlin=nonlin, beat=beat, depth=depth,
               chaos=chaos, speed=speed).items() if v is not None}}
@@ -437,6 +540,18 @@ def apply_resonator(excitation, shape="bar", size=None, aspect=None, thickness=N
         y = np.zeros_like(excitation, dtype=np.float64)
         for f, dt, g in zip(freqs, damping_times, gains):
             y += g * _resonant_mode(excitation, f, dt, sr)
+        # 2026-09-26: filtro lineare (colora le armoniche dell'eccitatore) pesato h, modi pilotati (suonano alle
+        # proprie frequenze, inarmoniche se h basso) pesati 1-h: harmonicity governa davvero inharmonicity.
+        if h < 1.0:
+            yd = _driven_modes(excitation, freqs, damping_times, gains, sr)
+            y = h * _unit_rms(y) + (1.0 - h) * _unit_rms(yd)
+    if has_f0 and pf > 0:
+        tau0 = float(np.median(damping_times)) if len(damping_times) else FOCUS_TAU  # decadimento = del risonatore
+        y = (1.0 - pf) * _unit_rms(y) + pf * _unit_rms(_resonant_mode(excitation, float(f0), tau0, sr))
+    if bd < 1.0:
+        y = (1.0 - bd) * _unit_rms(excitation) + bd * _unit_rms(y)
+    if form_amt is not None and form_amt > 0 and form_f1 is not None and form_f2 is not None:
+        y = _formant_filter(y, sr, form_f1, form_f2, float(form_amt))
     peak = np.max(np.abs(y))
     return (y / peak * 0.9).astype(np.float32) if peak > EPS else y.astype(np.float32)
 

@@ -16,3 +16,20 @@ __pycache__/
 *.pyc
 .DS_Store
 *.log
+dataset_v2/
+dataset_v3/
+dataset_v4/
+dataset_v5/
+
+# 2026-09-28 (0.2.0): pesi di prova/vecchi, binari dei test, file temporanei
+weights_test1/
+weights_test5/
+weights_test_pc/
+weights_v2/
+weights_v3/
+weights_v4/
+native/plugins/MultiPhiMo/tests/*
+!native/plugins/MultiPhiMo/tests/*.cpp
+.fuse_hidden*
+diag_*.csv
+*.logcd

@@ -58,6 +58,40 @@ SPSA_ELIGIBLE_EXCITERS = {"bow", "noise", "strike", "shaker"}
 # 2026-09-21: +mechanical (KNN congiunto: NMAE medio 0.130 vs 0.162 MDN; temporali 0.15-0.20 vs 0.41-0.73).
 JOINT_LOCKED_EXCITERS = {"pluck", "chaos", "bird", "mechanical"}
 
+# 2026-09-26: routing v4 = surrogato parametri->descrittori + ottimizzazione (surrogate.py), per TUTTI gli eccitatori
+# quando esiste weights_v4/<eccitatore>.pt; MDN/KNN restano solo come ripiego (diag_routing.py: MDN non seguivano il
+# target). I parametri di accoppiamento (harmonicity, pitch_focus, body, inviluppo, AM, formanti) viaggiano dentro
+# resonator_params (apply_resonator li accetta come parole chiave).
+USE_SURROGATE = True
+_inverters = {}
+
+
+def _surrogate_route(exciter_name, resonator_shape, target):
+    import surrogate
+    path = surrogate.WEIGHTS_DIR / f"{exciter_name}.pt"
+    if not path.exists():
+        return None
+    inv = _inverters.get(exciter_name)
+    if inv is None:
+        inv = _inverters[exciter_name] = surrogate.Inverter(exciter_name)
+    p = target.get("pitch")
+    freq = float(p) if p is not None and np.isfinite(p) and p > 0 else None
+    xp, rp, cp, _, _ = inv.solve(target, resonator_shape, freq=freq)
+    return xp, {**rp, **cp}, inv
+
+
+# 2026-09-28: ricerca sul synth vero in background (surrogate.RealSearch). A target e coppia invariati, ogni ciclo
+# del worker fa UN render reale + analisi (~1 s) invece di rifare solve; se il misurato migliora, pubblica il
+# candidato (refined=True): la prima nota usa la stima della rete, le successive e il Morph (che leggono
+# worker.candidate) convergono sul suono misurato. Si ferma dopo REAL_SEARCH_MAX render per target.
+# Nessun auto-trigger sui miglioramenti (solo sui cambi di target).
+REAL_SEARCH = True
+REAL_SEARCH_MAX = 30
+
+
+def _target_key(exciter_name, resonator_shape, target):
+    return exciter_name, resonator_shape, tuple(sorted((k, repr(v)) for k, v in target.items()))
+
 # Selettore auto (fase 2, priorita' 2): tempo minimo tra due switch di coppia
 # auto-selezionata, per non "sfarfallare" tra coppie vicine in punteggio quando il
 # target oscilla di poco -- la selezione manuale (CLI/GUI) non e' soggetta a questo
@@ -119,9 +153,10 @@ class Candidate:
 
 
 def _res_f0(exciter_name, ex_params):
-    if exciter_name in agents.PITCH_LOCKED_EXCITERS and ex_params.get("freq", 0) > 0:
-        return float(ex_params["freq"])
-    return None
+    # 2026-09-26: f0 = freq per TUTTI gli eccitatori (riferimento di harmonicity/pitch_focus nello stadio di
+    # accoppiamento; il cap sui decadimenti non esiste piu').
+    f = ex_params.get("freq", 0)
+    return float(f) if f and f > 0 else None
 
 
 def _lock_freq(exciter_name, exciter_params, target):
@@ -245,6 +280,8 @@ class ParamCandidateWorker:
         self._prev_candidate: Optional[Candidate] = None
         self._last_auto_trigger = 0.0
         self.candidate: Optional[Candidate] = None
+        self._search = None  # surrogate.RealSearch attiva (ricerca reale in background)
+        self._search_key = None
         self._stop_evt = None
         self._thread = None
 
@@ -371,6 +408,48 @@ class ParamCandidateWorker:
             return
 
         resonator_agent_name = f"resonator_{resonator_shape}"
+
+        if USE_SURROGATE:
+            key = _target_key(exciter_name, resonator_shape, target)
+            s = self._search
+            if REAL_SEARCH and s is not None and key == self._search_key:
+                if s.n < REAL_SEARCH_MAX:
+                    try:
+                        if s.step():
+                            xp, rp, cp, err, _ = s.result()
+                            s.inv.prev[resonator_shape] = s.best.copy()  # partenza a caldo dal migliore misurato
+                            c = Candidate(exciter_name=exciter_name, exciter_params=xp,
+                                          resonator_shape=resonator_shape, resonator_params={**rp, **cp},
+                                          timestamp=time.monotonic(), refined=True)
+                            self.candidate = self._prev_candidate = c
+                            print(f"[param_candidate] ricerca reale: prova {s.n}/{REAL_SEARCH_MAX}, "
+                                  f"errore {err:.3f}", file=sys.stderr)
+                    except Exception as e:
+                        print(f"[param_candidate] ricerca reale fallita, resta la stima della rete: {e}",
+                              file=sys.stderr)
+                        self._search = None
+                return
+            try:
+                routed = _surrogate_route(exciter_name, resonator_shape, target)
+            except Exception as e:
+                print(f"[param_candidate] surrogato fallito, ripiego su MDN/KNN: {e}", file=sys.stderr)
+                routed = None
+            if routed is not None:
+                exciter_params, resonator_params, inv = routed
+                self._search, self._search_key = None, key
+                if REAL_SEARCH:
+                    import surrogate
+                    self._search = surrogate.RealSearch(
+                        inv, lambda xp, rp, cp: surrogate.render_measure(exciter_name, resonator_shape, xp, rp, cp))
+                prev = self._prev_candidate
+                new_candidate = Candidate(
+                    exciter_name=exciter_name, exciter_params=exciter_params,
+                    resonator_shape=resonator_shape, resonator_params=resonator_params,
+                    timestamp=time.monotonic(), refined=False)
+                self.candidate = new_candidate
+                self._prev_candidate = new_candidate
+                self._maybe_auto_trigger(prev, new_candidate)
+                return
 
         if exciter_name in JOINT_LOCKED_EXCITERS:
             try:

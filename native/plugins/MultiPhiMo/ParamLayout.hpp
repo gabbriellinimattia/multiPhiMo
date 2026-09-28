@@ -16,6 +16,15 @@ static const char* const kDescriptorNames[15] = {
     "formant_f3", "mod_rate", "mod_depth", "attack_time", "decay_time", "pitch"
 };
 
+// 2026-09-26: nomi MOSTRATI (host + GUI). harmonic_tension -> "tonal_focus" (deciso con l'utente): il valore
+// misura la concentrazione tonale (alto = tonale/armonico), il nome originale suggeriva il verso opposto. Chiavi
+// interne, simboli, OSC e corpus invariati (kDescriptorNames).
+static const char* const kDescriptorDisplayNames[15] = {
+    "spectral_centroid", "spectral_spread", "spectral_rolloff", "spectral_flatness",
+    "roughness", "tonal_focus", "inharmonicity", "formant_f1", "formant_f2",
+    "formant_f3", "mod_rate", "mod_depth", "attack_time", "decay_time", "pitch"
+};
+
 static const char* const kDescriptorSymbols[15] = {
     "target_spectral_centroid", "target_spectral_spread", "target_spectral_rolloff",
     "target_spectral_flatness", "target_roughness", "target_harmonic_tension",
@@ -162,6 +171,8 @@ enum Parameters {
     kParameterSmoothing,  // 2026-09-25: smoothing audio-in 20-1000 ms (gui.py slider "Smoothing"), in coda
     kParameterMorph,      // 2026-09-25: morph spettrale on/off (SpectralMorph.hpp), in coda
     kParameterAutoPair,   // 2026-09-25: selettore coppia automatico (PairSelector.hpp), solo Mode=Agent, in coda
+    kParameterCouplingFirst,  // 2026-09-28: 10 slot d'accoppiamento v5 (Coupling.hpp kCouplingSpecs), normalizzati 0-1, in coda
+    kParameterCouplingLast = kParameterCouplingFirst + 9,
     kParameterCount
 };
 

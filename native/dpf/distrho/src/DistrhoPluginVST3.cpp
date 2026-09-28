@@ -103,6 +103,9 @@ static constexpr MidiCCMapEntry kMultiPhiMoMidiCCTable[] = {
     { 114, "target_attack_time" },       { 115, "target_decay_time" },
     { 116, "target_pitch" },
     { 117, "audio_in" }, { 118, "smoothing_ms" }, { 119, "morph" }, { 9, "auto_pair" },  // 2026-09-25
+    { 52, "coup_harmonicity" }, { 53, "coup_pitch_focus" }, { 54, "coup_body" },            // 2026-09-28
+    { 55, "coup_exc_attack" },  { 56, "coup_exc_hold" },    { 57, "coup_am_rate" },
+    { 58, "coup_am_depth" },    { 59, "coup_form_f1" },     { 60, "coup_form_f2" }, { 61, "coup_form_amt" },
 };
 
 static_assert(sizeof(kMultiPhiMoMidiCCTable) / sizeof(kMultiPhiMoMidiCCTable[0]) == kMultiPhiMoUsedMidiCCCount,

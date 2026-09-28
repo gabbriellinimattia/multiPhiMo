@@ -7,10 +7,14 @@ parametri fisici che li producono (matching sui descrittori, non timbrico).
 - **Plugin VST3 (C++)**: in [`native/`](native/) — installazione, uso e compilazione in
   [`native/README.md`](native/README.md). Le release pronte (macOS Apple Silicon) sono nella
   pagina *Releases* del repository.
-- **Prototipo Python**: in radice (`main.py`, `gui.py`, `agents.py`, `exciters.py`,
-  `resonator.py`, `analyzer/`, …), usato per generare i dataset, addestrare gli agenti ed
-  esportare pesi e corpus per il plugin (`native/tools/`). La cartella `dataset/` non è nel
-  repository (si rigenera con `dataset_gen.py`); i pesi addestrati sono in `weights/`.
+- **Prototipo Python**: in radice (`main.py`, `gui.py`, `exciters.py`, `resonator.py`,
+  `surrogate.py`, `analyzer/`, …). Dalla 0.2.0 il motore è `surrogate.py`: una rete diretta
+  parametri → descrittori per eccitatore (forma del risonatore in ingresso), invertita con
+  un ottimizzatore, più una ricerca sul synth vero (render + analisi) in background.
+  Dataset: `python3 dataset_v2.py --n 40000` (non nel repository, cartella `dataset_v5/`);
+  addestramento: `python3 surrogate.py train --ens 5 --no-pitch-feat` (pesi in `weights_v5/`);
+  export per il plugin: `python3 native/tools/export_surrogate.py`. I vecchi agenti MDN/KNN
+  (`agents.py`, `weights/`) restano solo come ripiego dell'app Python.
 
 Licenza ISC (vedi [`LICENSE`](LICENSE)); licenze di terze parti del plugin in
 [`native/THIRD_PARTY_LICENSES.md`](native/THIRD_PARTY_LICENSES.md).

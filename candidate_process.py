@@ -144,7 +144,7 @@ def _child_main(target_queue, control_queue, candidate_queue, audio_queue, confi
                 sr = SR
             else:
                 raw, sr = exciter_generate(cand.exciter_name, duration=duration, **cand.exciter_params)
-            audio = apply_resonator(raw, shape=cand.resonator_shape, **cand.resonator_params)
+            audio = apply_resonator(raw, shape=cand.resonator_shape, f0=cand.f0, **cand.resonator_params)  # 2026-09-26: f0 per harmonicity/pitch_focus
             if sustain_continuation:
                 trim_n = min(int(SUSTAIN_TRIM_S * sr), len(audio) // 2)
                 audio = audio[trim_n:]

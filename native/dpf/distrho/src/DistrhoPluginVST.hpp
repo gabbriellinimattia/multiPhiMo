@@ -69,7 +69,7 @@ START_NAMESPACE_DISTRHO
 // (kMultiPhiMoMidiCCTable), unico posto che la usa davvero (get_midi_controller_assignment/
 // getParameterInfo/appendCC) -- qui basta il conteggio per dimensionare l'enum, un
 // static_assert nel .cpp verifica che le due dimensioni restino allineate.
-static constexpr uint32_t kMultiPhiMoUsedMidiCCCount = 42;  // 37 + gain (CC7) + audio_in/smoothing/morph/auto_pair (CC117-119, CC9), 2026-09-25
+static constexpr uint32_t kMultiPhiMoUsedMidiCCCount = 52;  // 2026-09-28: +10 accoppiamento (CC52-61);  // 37 + gain (CC7) + audio_in/smoothing/morph/auto_pair (CC117-119, CC9), 2026-09-25
 
 enum Vst3InternalParameters {
    #if DPF_VST3_USES_SEPARATE_CONTROLLER

@@ -127,6 +127,9 @@ public:
         fParams[kParameterSmoothing]        = 200.0f; // audio_input.py smoothing_ms default
         fParams[kParameterMorph]            = 0.0f;   // morph spettrale spento
         fParams[kParameterAutoPair]         = 0.0f;   // auto pair spento
+        for (int i = 0; i < phimo::kCouplingCount; ++i)  // 2026-09-28: default Manual dell'accoppiamento
+            fParams[kParameterCouplingFirst + i] =
+                phimo::couplingNormalize(phimo::kCouplingManualDefaults[i], phimo::kCouplingSpecs[i]);
 
         // Round 3.3a (2026-09-23): Scale/tuning -- default Scale=off, edo12, A4=440 (stessi
         // default di gui.py). Sovrascritti da setState() se l'host ripristina un progetto
@@ -173,7 +176,7 @@ public:
                 dataDir = std::string(res) + "/data";
         std::string engineErr;
         if (!dataDir.empty() &&
-            fEngine.loadAll(dataDir + "/weights", dataDir + "/knn_corpus.bin", &engineErr))
+            fEngine.loadAll(dataDir + "/surrogate", &engineErr))  // 2026-09-28: surrogati v5
         {
             fVoiceEngine.reset(new phimo::VoiceEngine(fEngine));
             fVoiceEngine->start();
@@ -287,7 +290,7 @@ protected:
         if (index >= kParameterDescriptorFirst && index <= kParameterDescriptorLast)
         {
             const uint32_t d = index - kParameterDescriptorFirst;
-            parameter.name = kDescriptorNames[d];
+            parameter.name = kDescriptorDisplayNames[d];
             parameter.symbol = kDescriptorSymbols[d];
             parameter.ranges.def = kDescriptorRanges[d].def;
             parameter.ranges.min = kDescriptorRanges[d].lo;
@@ -379,6 +382,19 @@ protected:
             parameter.name = "Auto pair";
             parameter.symbol = "auto_pair";
             parameter.ranges.def = 0.0f;
+            parameter.ranges.min = 0.0f;
+            parameter.ranges.max = 1.0f;
+            return;
+        }
+
+        if (index >= kParameterCouplingFirst && index <= kParameterCouplingLast)
+        {
+            // 2026-09-28: accoppiamento v5 (resonator.COUPLING_RANGES), usato in Mode=Manual; normalizzato 0-1
+            // come gli altri slot (valore fisico mostrato in GUI, Render.hpp couplingDenormalize).
+            const int c = static_cast<int>(index - kParameterCouplingFirst);
+            parameter.name = phimo::kCouplingSpecs[c].name;
+            parameter.symbol = String("coup_") + phimo::kCouplingSpecs[c].name;
+            parameter.ranges.def = phimo::couplingNormalize(phimo::kCouplingManualDefaults[c], phimo::kCouplingSpecs[c]);
             parameter.ranges.min = 0.0f;
             parameter.ranges.max = 1.0f;
             return;
@@ -581,6 +597,37 @@ protected:
     // Costruisce e accoda un trigger al worker con i parametri CORRENTI (target descrittori in
     // Agent, slot grezzi in Manual) -- estratto dal note-on il 2026-09-25 per riusarlo anche
     // dai render periodici del morph spettrale. Solo thread audio (run()).
+    // 2026-09-28: in Mode=Agent il target corrente va al worker anche senza note (surrogato + ricerca reale in
+    // background, VoiceEngine::publishTarget). Solo al cambio di target/coppia/scala; se la coda e' piena si
+    // riprova al blocco successivo (fBgPublished resta false). Solo thread audio.
+    void publishAgentTarget()
+    {
+        if (!fVoiceEngine || fParams[kParameterMode] >= 0.5f)
+            return;
+        const int selExc = std::min(std::max(static_cast<int>(std::lround(fParams[kParameterExciterSelect])), 0), 9);
+        const int selRes = std::min(std::max(static_cast<int>(std::lround(fParams[kParameterResonatorSelect])), 0), 6);
+        phimo::ScaleContext sc;
+        sc.active = fScaleActive.load(std::memory_order_relaxed);
+        sc.scaleIndex = fScaleIndex.load(std::memory_order_relaxed);
+        sc.a4 = fA4.load(std::memory_order_relaxed);
+        sc.custom = fCustomScales.current();
+        bool same = fBgPublished && fBgExc == selExc && fBgRes == selRes && fBgScale.active == sc.active
+                    && fBgScale.scaleIndex == sc.scaleIndex && fBgScale.a4 == sc.a4 && fBgScale.custom == sc.custom;
+        float target[15];
+        for (uint32_t d = 0; d < 15; ++d)
+        {
+            target[d] = fParams[kParameterDescriptorFirst + d];
+            same = same && target[d] == fBgTarget[d];
+        }
+        if (same)
+            return;
+        fBgPublished = fVoiceEngine->publishTarget(kExciterEnum[selExc].label, kResonatorEnum[selRes].label, target, sc);
+        fBgExc = selExc;
+        fBgRes = selRes;
+        fBgScale = sc;
+        std::memcpy(fBgTarget, target, sizeof(target));
+    }
+
     void sendTrigger(uint8_t note, uint8_t vel, uint8_t channel, bool morph)
     {
                         const int selExc = static_cast<int>(std::lround(fParams[kParameterExciterSelect]));
@@ -622,8 +669,12 @@ protected:
                             float resRaw[10];
                             for (uint32_t i = 0; i < 10; ++i)
                                 resRaw[i] = fParams[kParameterResonatorParamFirst + i];
+                            float coupRaw[phimo::kCouplingCount];
+                            for (int i = 0; i < phimo::kCouplingCount; ++i)
+                                coupRaw[i] = fParams[kParameterCouplingFirst + i];
                             fVoiceEngine->triggerNoteOnManual(excName, resName, static_cast<int32_t>(note),
-                                                               static_cast<float>(vel), excRaw, resRaw, scaleCtx, morph);
+                                                               static_cast<float>(vel), excRaw, resRaw, coupRaw,
+                                                               scaleCtx, morph);
                         }
                         else
                         {
@@ -799,6 +850,11 @@ protected:
                 paramIndex = (cc == 117) ? kParameterAudioIn : (cc == 119) ? kParameterMorph : kParameterAutoPair;
                 mapped = (val >= 64) ? 1.0f : 0.0f;
             }
+            else if (cc >= 52 && cc <= 61)
+            {
+                paramIndex = static_cast<int>(kParameterCouplingFirst) + (cc - 52);  // 2026-09-28: accoppiamento
+                mapped = ccToRange(val, 0.0f, 1.0f);
+            }
             else if (cc == 118)
             {
                 paramIndex = kParameterSmoothing;
@@ -822,6 +878,7 @@ protected:
             const bool on = fParams[kParameterAutoPair] >= 0.5f && fParams[kParameterMode] < 0.5f;
             fAutoPair.setEnabled(on);
             fAutoPairHold += frames;
+            publishAgentTarget();
             int e, r;
             if (!on)
             {
@@ -922,6 +979,11 @@ private:
     // setState/getState (thread messaggi host); run()/worker vedono solo lo snapshot
     // immutabile pubblicato in fCustomScales (puntatore atomico).
     phimo::CustomScaleStore fCustomScales;
+    // 2026-09-28: ultimo target pubblicato al worker (publishAgentTarget), solo thread audio
+    bool fBgPublished = false;
+    int fBgExc = -1, fBgRes = -1;
+    phimo::ScaleContext fBgScale;
+    float fBgTarget[15] = {};
     String fSclFile;
     String fSclData;
 

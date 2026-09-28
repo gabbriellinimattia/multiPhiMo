@@ -33,6 +33,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <map>
+#include <string>
 #include <random>
 #include <thread>
 #include <vector>
@@ -42,6 +44,7 @@
 #include "Spsc.hpp"
 #include "TuningQuantizer.hpp"
 #include "SpectralMorph.hpp"
+#include "Surrogate.hpp"
 
 namespace phimo {
 
@@ -95,6 +98,7 @@ struct TriggerRequest {
     bool manual = false;
     float excParams[9] = {};
     float resParams[10] = {};
+    float coupParams[kCouplingCount] = {};  // 2026-09-28: 10 slot d'accoppiamento (Manual), normalizzati 0-1
     ScaleContext scale;  // round 3.3a -- default: nessun override, nessuna quantizzazione
     bool morph = false;  // 2026-09-25: render per il morph spettrale (-> istantanea, non voce)
 };
@@ -180,6 +184,7 @@ public:
     // ma la corrispondenza puntuale e' responsabilita' del worker, non del chiamante).
     bool triggerNoteOnManual(const char* exciterName, const char* resonatorName, int32_t noteId,
                               float velocity01to127, const float excParams[9], const float resParams[10],
+                              const float coupParams[kCouplingCount],
                               const ScaleContext& scale = ScaleContext(), bool morph = false) {
         TriggerRequest req;
         req.exciterName = exciterName;
@@ -190,6 +195,7 @@ public:
         req.manual = true;
         for (int i = 0; i < 9; ++i) req.excParams[i] = excParams[i];
         for (int i = 0; i < 10; ++i) req.resParams[i] = resParams[i];
+        for (int i = 0; i < kCouplingCount; ++i) req.coupParams[i] = coupParams[i];
         req.scale = scale;
         req.morph = morph;
         const bool ok = triggerQueue_.push(req);
@@ -202,6 +208,20 @@ public:
     // Voce mono: il chiamante (run()) fa morphNoteOn + un trigger con morph=true; poi, finche'
     // la voce e' tenuta, morphDue() dice quando chiedere il render successivo (uno alla volta,
     // mai piu' di uno in volo: si auto-regola sulla velocita' del worker).
+    // 2026-09-28: target corrente (Mode=Agent) per il worker, anche SENZA note: il worker risolve col surrogato e
+    // avvia la ricerca reale in background (param_candidate.py REAL_SEARCH). Chiamata dal thread audio solo quando
+    // target/coppia/scala cambiano (best-effort: coda piena = si riprova al blocco successivo).
+    bool publishTarget(const char* exciterName, const char* resonatorName, const float target[15],
+                       const ScaleContext& scale) {
+        BgTarget b;
+        b.exciterName = exciterName;
+        b.resonatorName = resonatorName;
+        for (int i = 0; i < 15; ++i) b.target[i] = target[i];
+        b.scale = scale;
+        b.scale.overrideNoteMidi = -1;
+        return bgQueue_.push(b);
+    }
+
     void morphNoteOn(int32_t noteId, float velocity01to127) {
         morphVoice_.noteOn(noteId, velocity01to127 / kVelocityToGainDivisor);
     }
@@ -338,6 +358,80 @@ private:
         v.releaseLen = releaseN;
     }
 
+    // ---- Mode=Agent (2026-09-28): surrogato + ricerca reale (porting di param_candidate.py REAL_SEARCH) ----
+    // Stato SOLO del worker. Chiave = coppia (puntatori a stringhe statiche) + target gia' quantizzato: a chiave
+    // invariata il candidato e' il migliore MISURATO dalla ricerca (le note successive e il morph convergono sul
+    // suono misurato); a chiave nuova si risolve col surrogato (8 partenze x 80 passi) e la ricerca riparte.
+    struct AgentState {
+        bool valid = false;
+        const char* exc = nullptr;
+        const char* res = nullptr;
+        float target[15] = {};
+        SgDecoded dec;
+        SgRealSearch search;
+        bool searching = false;
+    };
+
+    static void quantizeTarget(const float in[15], const ScaleContext& sc, float out[15]) {
+        std::memcpy(out, in, sizeof(float) * 15);
+        if (sc.active) {
+            constexpr int kPitchIdx = 14;
+            const float base = (sc.overrideNoteMidi >= 0) ? midiNoteToFreq(sc.overrideNoteMidi, sc.a4) : out[kPitchIdx];
+            out[kPitchIdx] = quantizeFreqToScale(base, sc.scaleIndex, sc.a4, sc.custom);
+        }
+    }
+
+    bool sameKey(const char* exc, const char* res, const float t[15]) const {
+        return agent_.valid && agent_.exc == exc && agent_.res == res && std::memcmp(agent_.target, t, sizeof(float) * 15) == 0;
+    }
+
+    SurrogateSolver& solverFor(const char* exc) {
+        auto it = solvers_.find(exc);
+        if (it == solvers_.end()) {
+            const SurrogateModel* m = engine_.surrogate(exc);
+            if (!m) throw std::runtime_error(std::string("surrogato assente: ") + exc);
+            it = solvers_.emplace(exc, SurrogateSolver()).first;
+            it->second.m = m;
+        }
+        return it->second;
+    }
+
+    void solveAgent(const char* exc, const char* res, const float t[15], std::mt19937& rng) {
+        SurrogateSolver& sv = solverFor(exc);
+        double tv[15];
+        bool valid[15];
+        for (int i = 0; i < 15; ++i) { tv[i] = t[i]; valid[i] = true; }
+        valid[kSgPitch] = t[kSgPitch] > 0.0f;
+        const double freq = valid[kSgPitch] ? (double)t[kSgPitch] : 0.0;
+        agent_.valid = false;
+        SgDecoded dec;
+        if (!sv.solve(tv, valid, res, freq, rng, dec)) throw std::runtime_error("forma non nota al surrogato");
+        agent_.exc = exc;
+        agent_.res = res;
+        std::memcpy(agent_.target, t, sizeof(float) * 15);
+        agent_.dec = dec;
+        agent_.search.init(sv, rng());
+        agent_.searching = true;
+        agent_.valid = true;
+    }
+
+    // Un render reale + analisi (analyzeSignal) sulla configurazione proposta dalla ricerca
+    void searchStep(std::mt19937& rng) {
+        const std::string exc = agent_.exc, res = agent_.res;
+        auto render = [&](const SgDecoded& d, double* meas, bool* mv) {
+            const std::vector<float> y = renderRaw(exc, res, d.exc, d.res, d.coup, rng());
+            const std::vector<double> x(y.begin(), y.end());
+            const DescriptorSet ds = analyzeSignal(x, kResonatorSR, true);
+            for (int j = 0; j < 15; ++j) { meas[j] = ds.v[j]; mv[j] = ds.valid[j]; }
+        };
+        if (agent_.search.step(render)) {
+            agent_.dec = agent_.search.result();
+            solverFor(agent_.exc).prev[agent_.search.shape()] = agent_.search.best;  // partenza a caldo dal misurato
+            ++searchImproveCount_;
+        }
+        if (agent_.search.n >= kRealSearchMax) agent_.searching = false;
+    }
+
     void workerLoop() {
         std::vector<int32_t> freeSlots;
         freeSlots.reserve(kPoolSlots);
@@ -353,7 +447,23 @@ private:
 
             TriggerRequest req;
             if (!triggerQueue_.pop(req)) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                // niente note: target nuovo -> surrogato; altrimenti un passo di ricerca reale
+                BgTarget bg;
+                bool gotBg = false;
+                while (bgQueue_.pop(bg)) gotBg = true;
+                try {
+                    if (gotBg) {
+                        float t[15];
+                        quantizeTarget(bg.target, bg.scale, t);
+                        if (!sameKey(bg.exciterName, bg.resonatorName, t)) solveAgent(bg.exciterName, bg.resonatorName, t, rng);
+                        continue;
+                    }
+                    if (agent_.valid && agent_.searching) { searchStep(rng); continue; }
+                } catch (const std::exception&) {
+                    agent_.searching = false;
+                    ++renderFailCount_;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
                 continue;
             }
             if (req.morph) {
@@ -361,7 +471,6 @@ private:
             } else if (freeSlots.empty()) {
                 continue;  // nessuno slot libero, scarta (best-effort)
             }
-            // i render del morph non usano il pool delle voci (diventano un'istantanea)
             const int32_t slot = req.morph ? -1 : freeSlots.back();
             if (!req.morph) freeSlots.pop_back();
             const double maxDur = req.morph ? kMorphRenderSeconds : kMaxDurationSeconds;
@@ -369,15 +478,6 @@ private:
             try {
                 RenderedAudio audio;
                 if (req.manual) {
-                    // Mode=Manual (punto 8A round 2): niente routeCandidate, i vettori
-                    // vanno dimensionati esattamente a spec.params.size() -- generateExciter
-                    // indicizza p[0..n-1] posizionalmente senza controllo bound (vedi
-                    // Render.hpp), un vettore piu' corto/lungo del previsto e' un bug, non
-                    // un caso limite da gestire silenziosamente.
-                    // req.excParams/resParams sono grezzi 0-1 (copiati cosi' da run(), mai
-                    // denormalizzati li' -- vedi commento su TriggerRequest sopra): la
-                    // conversione in fisico serve la ParamSpec, quindi avviene qui, DOPO le
-                    // lookup su agentSpecs() gia' necessarie per dimensionare i vettori.
                     const auto& excSpec = agentSpecs().at(req.exciterName);
                     const auto& resSpec = agentSpecs().at(std::string("resonator_") + req.resonatorName);
                     std::vector<float> excVec(excSpec.params.size());
@@ -386,33 +486,23 @@ private:
                     std::vector<float> resVec(resSpec.params.size());
                     for (size_t i = 0; i < resVec.size(); ++i)
                         resVec[i] = paramSpecDenormalize(req.resParams[i], resSpec.params[i]);
-                    // Round 3.3a: "freq" e' SEMPRE lo slot 0 per tutti e 10 gli eccitatori
-                    // (verificato in exciters.py PARAM_RANGES, vedi ParamRanges.hpp/nota al
-                    // punto 4) -- unico punto di quantizzazione Scale in Mode=Manual.
-                    if (req.scale.active && !excVec.empty()) {
-                        const float base = (req.scale.overrideNoteMidi >= 0)
-                            ? midiNoteToFreq(req.scale.overrideNoteMidi, req.scale.a4)
-                            : excVec[0];
-                        excVec[0] = quantizeFreqToScale(base, req.scale.scaleIndex, req.scale.a4, req.scale.custom);
-                    }
-                    audio = renderTriggerManual(req.exciterName, req.resonatorName, excVec, resVec,
-                                                 rng, kFadeInMs, kFadeOutMs, maxDur);
-                } else {
-                    // Round 3.3a: target[14] == "pitch" (kDescriptorKeys[14], vedi
-                    // ParamRanges.hpp) -- copia locale mutabile, req.target resta il valore
-                    // grezzo cosi' come arrivato da run() (nessun bisogno di preservarlo oltre
-                    // questo trigger, ma comunque piu' pulito non mutare la request).
-                    float target[15];
-                    std::memcpy(target, req.target, sizeof(target));
                     if (req.scale.active) {
-                        constexpr int kPitchIdx = 14;
-                        const float base = (req.scale.overrideNoteMidi >= 0)
-                            ? midiNoteToFreq(req.scale.overrideNoteMidi, req.scale.a4)
-                            : target[kPitchIdx];
-                        target[kPitchIdx] = quantizeFreqToScale(base, req.scale.scaleIndex, req.scale.a4, req.scale.custom);
+                        // slot di "freq" cercato per nome (noise: non e' il primo)
+                        for (size_t i = 0; i < excVec.size(); ++i)
+                            if (excSpec.params[i].name == "freq") {
+                                const float base = (req.scale.overrideNoteMidi >= 0)
+                                    ? midiNoteToFreq(req.scale.overrideNoteMidi, req.scale.a4) : excVec[i];
+                                excVec[i] = quantizeFreqToScale(base, req.scale.scaleIndex, req.scale.a4, req.scale.custom);
+                            }
                     }
-                    audio = renderTrigger(engine_, req.exciterName, req.resonatorName,
-                                           target, rng, kFadeInMs, kFadeOutMs, maxDur);
+                    audio = renderTriggerManual(req.exciterName, req.resonatorName, excVec, resVec, req.coupParams,
+                                                rng, kFadeInMs, kFadeOutMs, maxDur);
+                } else {
+                    float t[15];
+                    quantizeTarget(req.target, req.scale, t);
+                    if (!sameKey(req.exciterName, req.resonatorName, t)) solveAgent(req.exciterName, req.resonatorName, t, rng);
+                    audio = renderConfig(req.exciterName, req.resonatorName, agent_.dec.exc, agent_.dec.res,
+                                         agent_.dec.coup, rng(), kFadeInMs, kFadeOutMs, maxDur);
                 }
                 if (req.morph) {
                     const int32_t ms = morphFreeSlots.back();
@@ -439,6 +529,18 @@ private:
     }
 
     const Engine& engine_;
+
+    struct BgTarget {
+        const char* exciterName = nullptr;
+        const char* resonatorName = nullptr;
+        float target[15] = {};
+        ScaleContext scale;
+    };
+    static constexpr int kRealSearchMax = 30;       // param_candidate.REAL_SEARCH_MAX
+    SpscQueue<BgTarget, 8> bgQueue_;                // audio -> worker (target corrente, Mode=Agent)
+    AgentState agent_;                              // SOLO worker
+    std::map<std::string, SurrogateSolver> solvers_; // SOLO worker (stato prev/slider mosso per eccitatore)
+    uint64_t searchImproveCount_ = 0;               // SOLO worker (diagnostica)
     std::vector<float> pool_;
     std::vector<Voice> voices_;  // SOLO thread audio
     uint64_t nextBornSeq_ = 0;

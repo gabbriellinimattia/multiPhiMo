@@ -1,14 +1,10 @@
 #pragma once
-// Render-on-trigger (punto 7 fase 2, sotto-punto c) -- porting 1:1 di play_engine.py:
-// _estimate_duration, exciters.generate() (dispatch per nome), apply_resonator via
-// Resonator.hpp, _apply_fade. Chiamato dal worker thread dopo routeCandidate (Routing.hpp):
-// produce il buffer audio pronto da accodare al mixer (prossimo sotto-punto).
-//
-// NOTA: come gia' per Routing.hpp, la generazione stocastica (exciter con rngSeed) non e'
-// riproducibile bit-a-bit contro Python: la' exciter_generate() e' chiamata senza seed
-// esplicito (usa entropia fresca ad ogni chiamata via np.random.default_rng(None)), qui si
-// pesca un seed da 'rng' (lo stesso generatore gia' passato a routeCandidate) -- stessa
-// natura "sempre diverso a parita' di descrittori", solo la sorgente di entropia cambia.
+// Render-on-trigger -- 2026-09-28 (v5): semantica di surrogate.render_measure / dataset_v2:
+// exciters.generate(durata = resonator.note_duration) -> resonator.apply_resonator v5 (Coupling.hpp, stadio
+// d'eccitazione + accoppiamento + formanti, f0 = freq dell'eccitatore per TUTTI gli eccitatori come
+// param_candidate._res_f0) -> _apply_fade. Il routing Agent (surrogato + ricerca reale) vive nel worker
+// (VoiceEngine.hpp); qui solo il render di una configurazione gia' decisa. MDN/KNN (Routing.hpp) non piu' usati.
+// Generazione stocastica: seed pescato da rng (come prima), non riproducibile bit-a-bit contro Python.
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -18,16 +14,13 @@
 #include <vector>
 
 #include "ParamRanges.hpp"
-#include "Engine.hpp"
-#include "Routing.hpp"
 #include "Exciters.hpp"
 #include "Resonator.hpp"
+#include "Coupling.hpp"
 
 namespace phimo {
 
-// _MAX_DURATION di play_engine.py -- esposta qui (non piu' locale a estimateDuration)
-// cosi' il pool di buffer del mixer (punto 7d) puo' dimensionare gli slot senza
-// duplicare la costante.
+// Tetto del pool di buffer del mixer (VoiceEngine.hpp); note_duration resta sotto 3 s.
 inline constexpr double kMaxDurationSeconds = 6.0;
 
 struct RenderedAudio {
@@ -63,34 +56,6 @@ inline double defaultDuration(const std::string& exciterName) {
 
 // play_engine._estimate_duration: max(default_dur, decadimento risonatore * margine,
 // decay_time dell'eccitatore se presente), clampato tra default_dur e _MAX_DURATION.
-inline double estimateDuration(const std::string& exciterName, const std::string& resonatorShape,
-                                const std::map<std::string, float>& exciterParamsMap,
-                                const std::map<std::string, float>& resonatorParamsMap) {
-    constexpr double kDurationMargin = 3.0;  // _DURATION_MARGIN
-    const double defaultDur = render_detail::defaultDuration(exciterName);
-
-    double resoDecay = 0.0;
-    try {
-        const ModalBank bank = computeModalBank(resonatorShape, resonatorParamsMap);
-        double maxDt = 0.0;
-        for (double dt : bank.dampingTimes) maxDt = std::max(maxDt, dt);
-        resoDecay = maxDt * kDurationMargin;
-    } catch (const std::exception&) {
-        resoDecay = 0.0;  // stesso except Exception -> 0.0 di _estimate_duration
-    }
-
-    double excDecay = 0.0;
-    auto it = exciterParamsMap.find("decay_time");
-    if (it != exciterParamsMap.end()) excDecay = it->second;
-
-    double dur = std::max({defaultDur, resoDecay, excDecay});
-    return std::min(std::max(dur, defaultDur), kMaxDurationSeconds);
-}
-
-// exciters.generate(name, **params) / EXCITERS[name](**params): dispatch per nome,
-// argomenti posizionali nello STESSO ordine di agentSpecs().at(name).params (verificato
-// 1:1 contro le firme in Exciters.hpp per tutti e 10 gli eccitatori). Gli eccitatori
-// deterministici (bow/strike) ignorano 'seed'.
 inline std::vector<float> generateExciter(const std::string& name, double duration,
                                            const std::vector<float>& p, int sr, unsigned seed) {
     if (name == "bow")
@@ -137,75 +102,58 @@ inline void applyFade(std::vector<float>& audio, int sr, double fadeInMs, double
     }
 }
 
-// Pipeline completa di un trigger (play_engine.PlayEngine.trigger, ramo di render):
-// routeCandidate -> estimateDuration -> generateExciter -> applyResonatorOriginal ->
-// applyFade. fadeInMs/fadeOutMs passati dal chiamante (Python: self.fade_ms / self.morph_ms
-// a seconda della modalita' -- qui lasciato al chiamante, non deciso in questo sotto-punto).
-inline RenderedAudio renderTrigger(const Engine& engine, const std::string& exciterName,
-                                    const std::string& resonatorShape, const float target[15],
-                                    std::mt19937& rng, double fadeInMs, double fadeOutMs,
+// Parametri eccitatore per nome -> vettore nell'ordine di agentSpecs().at(exc).params (ordine di generateExciter)
+inline std::vector<float> exciterVector(const std::string& exc, const std::map<std::string, float>& m) {
+    const auto& spec = agentSpecs().at(exc);
+    std::vector<float> v(spec.params.size());
+    for (size_t i = 0; i < v.size(); ++i) {
+        auto it = m.find(spec.params[i].name);
+        if (it == m.end()) throw std::runtime_error("parametro mancante: " + exc + "." + spec.params[i].name);
+        v[i] = it->second;
+    }
+    return v;
+}
+
+// param_candidate._res_f0: f0 = freq dell'eccitatore (se > 0) per tutti gli eccitatori
+inline double exciterF0(const std::map<std::string, float>& excMap) {
+    auto it = excMap.find("freq");
+    return (it != excMap.end() && it->second > 0.0f) ? (double)it->second : 0.0;
+}
+
+// surrogate.render_measure: render SENZA fade (anche per la ricerca reale)
+inline std::vector<float> renderRaw(const std::string& exc, const std::string& shape,
+                                    const std::map<std::string, float>& excMap,
+                                    const std::map<std::string, float>& resMap,
+                                    const std::map<std::string, float>& coupMap, unsigned seed,
                                     double maxDuration = kMaxDurationSeconds) {
-    const Candidate cand = routeCandidate(engine, exciterName, resonatorShape, target, rng);
+    const double dur = std::min(noteDuration(render_detail::defaultDuration(exc), shape, resMap, coupMap), maxDuration);
+    std::vector<float> raw = generateExciter(exc, dur, exciterVector(exc, excMap), kResonatorSR, seed);
+    return applyResonatorV5(raw, shape, resMap, coupMap, exciterF0(excMap));
+}
 
-    const auto& excSpec = agentSpecs().at(exciterName);
-    const auto& resSpec = agentSpecs().at("resonator_" + resonatorShape);
-    const auto excMap = render_detail::paramsToMap(excSpec, cand.exciterParams);
-    const auto resMap = render_detail::paramsToMap(resSpec, cand.resonatorParams);
-
-    // maxDuration (2026-09-25): tetto piu' basso per i render del morph spettrale
-    // (SpectralMorph.hpp, kMorphRenderSeconds) -- serve solo la parte stabile.
-    const double duration = std::min(estimateDuration(exciterName, resonatorShape, excMap, resMap), maxDuration);
-    const unsigned seed = rng();
-
-    // param_candidate._res_f0 (2026-09-24): f0 per il cap dei decadimenti del risonatore
-    // (Resonator.hpp capDampingTimesForPitch) = freq dell'eccitatore SOLO se pitch-locked,
-    // altrimenti nessun cap (0.0 = comportamento invariato).
-    const double f0 = (excSpec.pitchLocked && !cand.exciterParams.empty() && cand.exciterParams[0] > 0.0f)
-                           ? (double)cand.exciterParams[0] : 0.0;
-
+inline RenderedAudio renderConfig(const std::string& exc, const std::string& shape,
+                                  const std::map<std::string, float>& excMap,
+                                  const std::map<std::string, float>& resMap,
+                                  const std::map<std::string, float>& coupMap, unsigned seed,
+                                  double fadeInMs, double fadeOutMs, double maxDuration = kMaxDurationSeconds) {
     RenderedAudio out;
     out.sr = kResonatorSR;
-    std::vector<float> raw = generateExciter(exciterName, duration, cand.exciterParams, out.sr, seed);
-    out.audio = applyResonatorOriginal(raw, resonatorShape, resMap, f0);
+    out.audio = renderRaw(exc, shape, excMap, resMap, coupMap, seed, maxDuration);
     applyFade(out.audio, out.sr, fadeInMs, fadeOutMs);
     return out;
 }
 
-// Mode=Manual (punto 8A round 2, 2026-09-23): stessa pipeline di renderTrigger ma SENZA
-// routeCandidate -- l'utente controlla direttamente i parametri di generazione invece
-// delle caratteristiche del suono risultante (deciso con l'utente: bypassare gli agenti
-// MDN/KNN in Manual, non solo il loro output). exciterParams/resonatorParams gia' in
-// valore fisico (denormalizzati dal chiamante via paramSpecDenormalize, ParamRanges.hpp),
-// stesso ordine di agentSpecs().at(...).params. 'rng' resta necessaria per il seed degli
-// eccitatori stocastici (proprieta' dell'eccitatore stesso, indipendente dal routing).
-inline RenderedAudio renderTriggerManual(const std::string& exciterName,
-                                          const std::string& resonatorShape,
-                                          const std::vector<float>& exciterParams,
-                                          const std::vector<float>& resonatorParams,
-                                          std::mt19937& rng, double fadeInMs, double fadeOutMs,
-                                          double maxDuration = kMaxDurationSeconds) {
-    const auto& excSpec = agentSpecs().at(exciterName);
-    const auto& resSpec = agentSpecs().at("resonator_" + resonatorShape);
-    const auto excMap = render_detail::paramsToMap(excSpec, exciterParams);
-    const auto resMap = render_detail::paramsToMap(resSpec, resonatorParams);
-
-    // maxDuration (2026-09-25): tetto piu' basso per i render del morph spettrale
-    // (SpectralMorph.hpp, kMorphRenderSeconds) -- serve solo la parte stabile.
-    const double duration = std::min(estimateDuration(exciterName, resonatorShape, excMap, resMap), maxDuration);
-    const unsigned seed = rng();
-
-    // Stessa logica f0/cap di renderTrigger sopra, estesa a Manual (nessuna controparte
-    // Python: Manual e' un concetto solo-VST3, ma la stessa fisica -- il risonatore non
-    // deve poter "suonare" una nota propria sopra il pitch scelto a mano -- vale anche qui).
-    const double f0 = (excSpec.pitchLocked && !exciterParams.empty() && exciterParams[0] > 0.0f)
-                           ? (double)exciterParams[0] : 0.0;
-
-    RenderedAudio out;
-    out.sr = kResonatorSR;
-    std::vector<float> raw = generateExciter(exciterName, duration, exciterParams, out.sr, seed);
-    out.audio = applyResonatorOriginal(raw, resonatorShape, resMap, f0);
-    applyFade(out.audio, out.sr, fadeInMs, fadeOutMs);
-    return out;
+// Mode=Manual: parametri gia' fisici (ordine agentSpecs), accoppiamento dai 10 slot normalizzati
+inline RenderedAudio renderTriggerManual(const std::string& exciterName, const std::string& resonatorShape,
+                                         const std::vector<float>& exciterParams,
+                                         const std::vector<float>& resonatorParams, const float coupRaw[kCouplingCount],
+                                         std::mt19937& rng, double fadeInMs, double fadeOutMs,
+                                         double maxDuration = kMaxDurationSeconds) {
+    const auto excMap = render_detail::paramsToMap(agentSpecs().at(exciterName), exciterParams);
+    const auto resMap = render_detail::paramsToMap(agentSpecs().at("resonator_" + resonatorShape), resonatorParams);
+    std::map<std::string, float> coupMap;
+    for (int i = 0; i < kCouplingCount; ++i) coupMap[kCouplingSpecs[i].name] = couplingDenormalize(coupRaw[i], kCouplingSpecs[i]);
+    return renderConfig(exciterName, resonatorShape, excMap, resMap, coupMap, rng(), fadeInMs, fadeOutMs, maxDuration);
 }
 
 } // namespace phimo

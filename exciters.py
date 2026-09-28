@@ -223,7 +223,9 @@ def pluck(duration=2.0, sr=SR, freq=220.0, pluck_position=0.2, pluck_hardness=0.
     # solo il burst iniziale, one-shot per costruzione).
     decay_time = _as_traj(decay_time, n)
     dispersion = _as_traj(dispersion, n)
-    decay_per_sample = np.exp(-6.91 / (np.maximum(decay_time, 0.01) * sr))
+    # 2026-09-26: attenuazione PER GIRO di corda (un campione ricircola una volta ogni sr/freq campioni): prima era
+    # per campione ma applicata una volta per giro -> decadimento ~sr/freq volte piu' lento, decay_time quasi inerte.
+    decay_per_sample = np.exp(-6.91 / (np.maximum(decay_time, 0.01) * freq))
     ap_coef = -dispersion * 0.5
     ap_x_prev, ap_y_prev = 0.0, 0.0
     out = np.zeros(n)
@@ -894,7 +896,9 @@ def pluck(duration=2.0, sr=SR, freq=220.0, pluck_position=0.2, pluck_hardness=0.
     burst[tap:] += -burst[:-tap]
     buf = burst.copy()
     decay_time = _as_traj(decay_time, n)
-    decay_per_sample = np.exp(-6.91 / (np.maximum(decay_time, 0.01) * sr))
+    # 2026-09-26: attenuazione PER GIRO di corda (un campione ricircola una volta ogni sr/freq campioni): prima era
+    # per campione ma applicata una volta per giro -> decadimento ~sr/freq volte piu' lento, decay_time quasi inerte.
+    decay_per_sample = np.exp(-6.91 / (np.maximum(decay_time, 0.01) * freq))
     ap_coef = -disp * 0.5
     ax = ay = 0.0     # allpass di dispersione
     tx = ty = 0.0     # allpass di accordatura
@@ -1142,7 +1146,7 @@ def bird(duration=1.5, sr=SR, freq=1500.0, alpha0=0.5, beta=1.0, eps=0.2, tau_d=
 
 
 def vocal(duration=1.5, sr=SR, freq=150.0, ps=800.0, gap=0.2, fold_q=8.0, kc_scale=1.0,
-          jaw=0.5, tongue=0.5, f3=2750.0, tilt=1.0, seed=0, core_w=0.9):
+          jaw=0.5, tongue=0.5, f3=2750.0, tilt=1.0, seed=0, core_w=0.5):
     """Nucleo tonale = serie armonica a freq (1/k, formanti F1-F3 come nel modello, tilt) + vocal originale (pieghe a 2 masse)
     come colore. Peso del nucleo core_w*clip(1-(gap-0.4)/0.9): bisbiglio (gap > ~1.3) = solo originale -> non intonato."""
     n = int(duration * sr)
@@ -1163,6 +1167,8 @@ def vocal(duration=1.5, sr=SR, freq=150.0, ps=800.0, gap=0.2, fold_q=8.0, kc_sca
     for ki in range(nh):
         core += a[ki] * np.sin(2.0 * np.pi * fk[ki] * t)
     core *= np.minimum(1.0, t / 0.03)
+    # 2026-09-26: core_w 0.9 -> 0.5: col 90% al nucleo fisso ps/fold_q/kc_scale/f3 erano inerti (< 0.5 dB); la
+    # fondamentale ora la garantisce il risonatore (pitch_focus/harmonicity).
     wc = core_w * min(max(1.0 - (gap - 0.4) / 0.9, 0.0), 1.0)
     out = wc * _unit(core) + (1.0 - wc) * _unit(col)
     return _peak_normalize(out)

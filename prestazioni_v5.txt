@@ -1,0 +1,215 @@
+multiPhiMo 0.2.0 -- prestazioni del motore C++ (rete v5 + ricerca reale), 20 target raggiungibili per eccitatore
+Errore per descrittore: |misurato - richiesto| / (p95 - p5 del descrittore per quell'eccitatore), in %.
+Colonne: rete = prima nota (stima della rete); +10 / +30 = dopo 10 / 30 render di ricerca reale.
+Tempi (mediana, un core): ritardo della prima nota (risoluzione + render) e tempo per arrivare a 10 / 30 prove.
+
+== bird  (20 target)
+  descrittore            rete      +10      +30
+  spectral_centroid     12.4%     7.5%     6.7%
+  spectral_spread       14.0%    11.7%    10.4%
+  spectral_rolloff      10.3%     9.9%    10.0%
+  spectral_flatness     22.1%    16.1%    11.6%
+  roughness             15.1%     7.6%     5.8%
+  tonal_focus           17.2%     9.7%     9.9%
+  inharmonicity         18.0%    13.3%     9.6%
+  formant_f1            10.7%     9.6%    10.2%
+  formant_f2             9.8%     5.1%     5.0%
+  formant_f3            10.5%     8.9%     9.0%
+  mod_rate              11.1%     8.1%     9.4%
+  mod_depth             15.8%     9.6%     9.9%
+  attack_time           19.4%    11.0%     8.3%
+  decay_time            10.3%     4.2%     4.6%
+  pitch                  0.3%     0.3%     0.2%
+  media                 13.1%     8.8%     8.0%
+  sotto il 10%           2/15    11/15    11/15
+  ritardo prima nota 0.67 s (di cui rete 0.41 s) | 10 prove 2.8 s | 30 prove 6.9 s
+
+== blow  (20 target)
+  descrittore            rete      +10      +30
+  spectral_centroid      6.1%     4.9%     3.7%
+  spectral_spread        7.5%     7.0%     5.3%
+  spectral_rolloff      12.0%     6.9%     6.1%
+  spectral_flatness      9.6%     8.0%     6.3%
+  roughness             12.5%     9.3%     8.0%
+  tonal_focus           16.8%     9.4%     8.5%
+  inharmonicity         10.1%     5.5%     4.8%
+  formant_f1            10.6%     3.9%     2.7%
+  formant_f2             7.2%     4.1%     4.8%
+  formant_f3            14.7%     5.1%     4.8%
+  mod_rate               8.7%     7.1%     5.7%
+  mod_depth             10.5%     6.1%     5.6%
+  attack_time           10.3%     7.6%     6.5%
+  decay_time            12.3%     6.6%     5.4%
+  pitch                  0.1%     0.1%     0.1%
+  media                  9.9%     6.1%     5.2%
+  sotto il 10%           6/15    15/15    15/15
+  ritardo prima nota 0.50 s (di cui rete 0.36 s) | 10 prove 1.8 s | 30 prove 4.7 s
+
+== bow  (20 target)
+  descrittore            rete      +10      +30
+  spectral_centroid      9.7%     5.5%     4.2%
+  spectral_spread        8.8%     5.2%     5.3%
+  spectral_rolloff       8.8%     9.4%     5.7%
+  spectral_flatness     18.2%    13.7%    12.4%
+  roughness             12.6%     8.8%     7.9%
+  tonal_focus           14.1%     6.2%     7.0%
+  inharmonicity         20.4%    13.1%     9.5%
+  formant_f1            12.1%     7.8%     6.5%
+  formant_f2            11.9%     8.9%     8.4%
+  formant_f3            19.8%    11.4%     8.9%
+  mod_rate               8.2%     5.0%     4.7%
+  mod_depth              6.7%     7.3%     6.1%
+  attack_time           13.5%     9.8%     9.5%
+  decay_time            10.0%     8.2%     5.5%
+  pitch                  0.1%     0.1%     0.0%
+  media                 11.7%     8.0%     6.8%
+  sotto il 10%           6/15    12/15    14/15
+  ritardo prima nota 0.52 s (di cui rete 0.36 s) | 10 prove 1.8 s | 30 prove 4.9 s
+
+== chaos  (20 target)
+  descrittore            rete      +10      +30
+  spectral_centroid      4.5%     3.9%     3.4%
+  spectral_spread        3.4%     2.6%     2.3%
+  spectral_rolloff       4.0%     2.7%     3.7%
+  spectral_flatness      9.3%     5.1%     3.8%
+  roughness              7.4%     7.5%     6.7%
+  tonal_focus           13.7%     9.9%     5.4%
+  inharmonicity         14.6%     9.0%     9.7%
+  formant_f1             8.2%     6.2%     4.4%
+  formant_f2             8.3%     6.3%     5.1%
+  formant_f3            10.4%     6.9%     5.1%
+  mod_rate               9.1%     7.4%     5.3%
+  mod_depth             14.5%     7.4%     5.7%
+  attack_time           10.5%     9.6%    10.0%
+  decay_time             9.0%     7.7%     7.0%
+  pitch                  0.0%     0.0%     0.0%
+  media                  8.5%     6.1%     5.2%
+  sotto il 10%          10/15    15/15    15/15
+  ritardo prima nota 0.60 s (di cui rete 0.43 s) | 10 prove 2.1 s | 30 prove 5.3 s
+
+== mechanical  (20 target)
+  descrittore            rete      +10      +30
+  spectral_centroid      6.7%     3.9%     4.2%
+  spectral_spread        7.4%     3.8%     2.9%
+  spectral_rolloff      11.9%     6.2%     6.5%
+  spectral_flatness     13.3%     9.4%     7.0%
+  roughness             12.9%     5.8%     7.9%
+  tonal_focus           12.4%    10.3%     8.3%
+  inharmonicity         13.4%     8.8%     7.2%
+  formant_f1            12.3%     7.4%     5.7%
+  formant_f2            14.2%     7.7%     4.4%
+  formant_f3            22.1%    13.6%    11.4%
+  mod_rate              16.0%    13.7%    11.4%
+  mod_depth             16.9%    10.9%    14.1%
+  attack_time           11.7%    11.0%     9.1%
+  decay_time             7.6%     6.0%     6.3%
+  pitch                  0.0%     0.0%     0.0%
+  media                 11.9%     7.9%     7.1%
+  sotto il 10%           4/15    10/15    12/15
+  ritardo prima nota 0.65 s (di cui rete 0.42 s) | 10 prove 2.5 s | 30 prove 7.0 s
+
+== noise  (20 target)
+  descrittore            rete      +10      +30
+  spectral_centroid     13.3%     4.6%     4.7%
+  spectral_spread       15.3%     6.2%     7.3%
+  spectral_rolloff       8.2%     7.5%     6.7%
+  spectral_flatness     13.5%    10.1%     8.7%
+  roughness             12.3%     8.1%     7.5%
+  tonal_focus           16.1%    10.5%     8.1%
+  inharmonicity         16.6%    11.8%    13.0%
+  formant_f1            13.9%    10.6%     8.0%
+  formant_f2            11.7%    14.1%    11.0%
+  formant_f3            11.7%    12.0%     7.5%
+  mod_rate              13.8%     8.9%     7.0%
+  mod_depth              9.6%     6.8%     7.4%
+  attack_time            8.6%     8.0%     4.5%
+  decay_time            10.6%     6.9%     7.2%
+  pitch                 16.7%     5.3%     3.3%
+  media                 12.8%     8.8%     7.5%
+  sotto il 10%           3/15     9/15    13/15
+  ritardo prima nota 0.73 s (di cui rete 0.56 s) | 10 prove 2.2 s | 30 prove 5.6 s
+
+== pluck  (20 target)
+  descrittore            rete      +10      +30
+  spectral_centroid      7.9%     8.1%     4.9%
+  spectral_spread        9.5%     7.7%     7.8%
+  spectral_rolloff      10.4%     7.0%     4.7%
+  spectral_flatness     11.8%     9.8%     7.1%
+  roughness              8.2%     7.3%     5.2%
+  tonal_focus            9.4%     5.8%     6.2%
+  inharmonicity         10.8%     4.8%     4.6%
+  formant_f1            10.9%     7.7%     7.0%
+  formant_f2            15.8%    10.2%     6.8%
+  formant_f3            14.6%    12.5%     8.0%
+  mod_rate              10.9%     7.5%     8.9%
+  mod_depth              4.2%     6.8%     4.4%
+  attack_time            7.2%     8.4%     7.0%
+  decay_time             4.5%     5.1%     4.5%
+  pitch                  2.3%     0.1%     0.1%
+  media                  9.2%     7.3%     5.8%
+  sotto il 10%           8/15    13/15    15/15
+  ritardo prima nota 0.82 s (di cui rete 0.56 s) | 10 prove 3.3 s | 30 prove 8.1 s
+
+== shaker  (20 target)
+  descrittore            rete      +10      +30
+  spectral_centroid      6.8%     4.7%     5.4%
+  spectral_spread        7.9%     6.6%     6.2%
+  spectral_rolloff       9.1%     7.3%     7.0%
+  spectral_flatness     13.2%     7.3%     8.5%
+  roughness             16.5%    12.7%     9.6%
+  tonal_focus           20.0%    15.4%     9.7%
+  inharmonicity         17.5%    12.0%     7.4%
+  formant_f1             9.1%     7.3%     9.2%
+  formant_f2             8.6%     6.0%     5.6%
+  formant_f3            14.9%     7.8%     8.1%
+  mod_rate               8.2%     7.2%     4.9%
+  mod_depth             12.1%     8.2%     6.9%
+  attack_time            8.4%     8.6%     6.2%
+  decay_time             6.5%     4.7%     5.8%
+  pitch                  2.6%     2.6%     5.8%
+  media                 10.8%     7.9%     7.1%
+  sotto il 10%           9/15    12/15    15/15
+  ritardo prima nota 0.52 s (di cui rete 0.37 s) | 10 prove 2.0 s | 30 prove 5.4 s
+
+== strike  (20 target)
+  descrittore            rete      +10      +30
+  spectral_centroid     11.6%     5.0%     4.2%
+  spectral_spread       13.6%     9.5%     6.5%
+  spectral_rolloff      15.6%     8.9%     8.0%
+  spectral_flatness     25.5%    15.0%     9.5%
+  roughness             20.6%    11.7%     7.4%
+  tonal_focus           12.6%     7.1%     6.3%
+  inharmonicity         12.9%     7.3%     7.1%
+  formant_f1             5.7%     8.3%     4.7%
+  formant_f2            13.0%     9.5%     7.2%
+  formant_f3            15.4%     8.7%     7.8%
+  mod_rate               7.3%     6.3%     5.0%
+  mod_depth              8.1%     7.5%     6.9%
+  attack_time           12.6%     8.0%     6.3%
+  decay_time             6.5%     5.5%     5.3%
+  pitch                  0.2%     0.1%     0.1%
+  media                 12.1%     7.9%     6.1%
+  sotto il 10%           5/15    13/15    15/15
+  ritardo prima nota 0.77 s (di cui rete 0.54 s) | 10 prove 2.9 s | 30 prove 8.2 s
+
+== vocal  (20 target)
+  descrittore            rete      +10      +30
+  spectral_centroid      9.3%     5.9%     6.1%
+  spectral_spread       10.1%     4.2%     6.4%
+  spectral_rolloff       9.0%     6.1%     5.3%
+  spectral_flatness     13.1%     9.8%     7.2%
+  roughness             19.3%    10.9%     7.5%
+  tonal_focus           17.3%    11.8%     9.6%
+  inharmonicity         22.1%    10.7%     8.2%
+  formant_f1            15.8%    10.5%     9.4%
+  formant_f2            16.5%    11.7%     9.6%
+  formant_f3            13.6%    11.0%     7.0%
+  mod_rate              10.2%     5.9%     3.3%
+  mod_depth              9.0%    10.1%     7.2%
+  attack_time           10.7%    11.2%     7.7%
+  decay_time             7.0%     6.4%     5.4%
+  pitch                 19.4%     0.4%     0.6%
+  media                 13.5%     8.4%     6.7%
+  sotto il 10%           4/15     7/15    15/15
+  ritardo prima nota 0.79 s (di cui rete 0.39 s) | 10 prove 3.4 s | 30 prove 11.1 s
+

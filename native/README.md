@@ -1,10 +1,12 @@
 # MultiPhiMo (VST3)
 
-Versione 0.1.0 · Licenza ISC · © 2026 Mattia Gabbriellini
+Versione 0.2.0 · Licenza ISC · © 2026 Mattia Gabbriellini
 
 Sintetizzatore a modelli fisici (10 eccitatori × 7 risonatori) pilotato da agenti IA:
 si impostano valori di **descrittori spettrali** (centroide, rugosità, pitch, formanti, …)
-e gli agenti scelgono i parametri fisici che li producono. Include una modalità Manual
+e una rete neurale (una per eccitatore) sceglie i parametri fisici che li producono, poi
+una ricerca sul synth vero affina il risultato in background (le note successive si
+avvicinano al suono richiesto). Include una modalità Manual
 (controllo diretto dei parametri fisici), scale/intonazioni (anche `.scl`), analisi
 dell'audio in ingresso (sidechain), morph spettrale continuo, scelta automatica della
 coppia eccitatore/risonatore, MIDI CC e OSC.
@@ -16,7 +18,7 @@ Formato: VST3 strumento (VST3i). Il bundle contiene già tutti i dati necessari
 
 ## macOS (Apple Silicon: M1 e successivi, macOS 11 Big Sur o più recente)
 
-1. Scompatta `MultiPhiMo-macOS-arm64.zip`.
+1. Scompatta `MultiPhiMo-<versione>-macOS-arm64.zip`.
 2. Copia `MultiPhiMo.vst3` in `~/Library/Audio/Plug-Ins/VST3/`
    (Finder → Vai → Vai alla cartella… → incolla il percorso).
 3. **Sblocca il plugin (una sola volta).** Il plugin è open source e non è firmato con un
@@ -104,8 +106,16 @@ Quando sarà disponibile:
 
 ## Uso rapido
 
-- **Mode Agent**: imposti i 15 descrittori, gli agenti scelgono i parametri fisici.
-  **Mode Manual**: controlli direttamente i parametri dell'eccitatore e del risonatore.
+- **Mode Agent**: imposti i 15 descrittori; la rete stima i parametri fisici (prima nota) e
+  in background una ricerca con render e analisi reali (fino a 30 prove) migliora il
+  risultato: premendo Play più volte il suono converge sui descrittori richiesti.
+  Il menu **Preset** (in alto a destra) carica 20 configurazioni prese dal dataset.
+- **Mode Manual**: controlli direttamente i parametri dell'eccitatore e del risonatore
+  (nessuna rete) e, nella terza colonna, l'**accoppiamento**: harmonicity (modi del corpo
+  spostati verso le armoniche), pitch_focus (modo dedicato alla fondamentale), body
+  (eccitatore secco ↔ risonatore), exc_attack/exc_hold (attacco e durata dell'eccitazione),
+  am_rate/am_depth (tremolo), form_f1/form_f2/form_amt (filtro formantico).
+- Precisione e tempi misurati per eccitatore: `prestazioni_v5.txt` nella radice del repository.
 - **Play** suona una nota con il pitch impostato; le note MIDI cambiano l'altezza solo con
   **Scale** attivo (scale incluse: edo12/24/31, perfect, harmonic, oppure un file `.scl`).
 - **Audio In** (sidechain): i descrittori seguono l'audio in ingresso.
@@ -125,7 +135,7 @@ Quando sarà disponibile:
 | 16 | Mode | 102-116 | 15 descrittori |
 | 17 | Eccitatore | 117 | Audio In (≥ 64 = on) |
 | 18 | Risonatore | 118 | Smoothing (20-1000 ms) |
-| | | 119 | Morph (≥ 64 = on) |
+| 52-61 | accoppiamento (Manual, ordine della colonna) | 119 | Morph (≥ 64 = on) |
 
 ### OSC
 
