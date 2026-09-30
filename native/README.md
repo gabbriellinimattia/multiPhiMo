@@ -1,6 +1,6 @@
 # MultiPhiMo (VST3)
 
-Versione 0.2.0 · Licenza ISC · © 2026 Mattia Gabbriellini
+Versione 0.2.1 · Licenza ISC · © 2026 Mattia Gabbriellini
 
 Sintetizzatore a modelli fisici (10 eccitatori × 7 risonatori) pilotato da agenti IA:
 si impostano valori di **descrittori spettrali** (centroide, rugosità, pitch, formanti, …)
@@ -13,6 +13,11 @@ coppia eccitatore/risonatore, MIDI CC e OSC.
 
 Formato: VST3 strumento (VST3i). Il bundle contiene già tutti i dati necessari
 (pesi dei modelli e corpus in `Contents/Resources/data`).
+
+Novità 0.2.1: parametri di sintesi quasi inerti resi efficaci. bow e blow: `damping` sostituito da
+`t60` (coda della corda/canna in secondi, 0.05-5 s); strike: `material` sposta i parziali 5 volte di più;
+shaker: `energy` controlla anche la durezza degli urti (render deterministico). Reti di questi quattro
+eccitatori riaddestrate. I progetti salvati con la 0.2.0 che usano questi parametri possono suonare diversi.
 
 ---
 
@@ -116,6 +121,8 @@ Quando sarà disponibile:
   (eccitatore secco ↔ risonatore), exc_attack/exc_hold (attacco e durata dell'eccitazione),
   am_rate/am_depth (tremolo), form_f1/form_f2/form_amt (filtro formantico).
 - Precisione e tempi misurati per eccitatore: `prestazioni_v5.txt` nella radice del repository.
+  Errore min / p10 / media / p90 / max di ogni descrittore per eccitatore e per forma del risonatore:
+  `errori_descrittori.txt` (dettaglio per coppia eccitatore/forma, anche in unità assolute: `errori_descrittori.csv`).
 - **Play** suona una nota con il pitch impostato; le note MIDI cambiano l'altezza solo con
   **Scale** attivo (scale incluse: edo12/24/31, perfect, harmonic, oppure un file `.scl`).
 - **Audio In** (sidechain): i descrittori seguono l'audio in ingresso.

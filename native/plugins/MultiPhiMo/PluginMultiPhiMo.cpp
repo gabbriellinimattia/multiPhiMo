@@ -10,8 +10,8 @@
 
 #ifndef MPM_VERSION_MAJOR  // definite dal Makefile; valori di ripiego se si compila altrimenti
 # define MPM_VERSION_MAJOR 0
-# define MPM_VERSION_MINOR 1
-# define MPM_VERSION_PATCH 0
+# define MPM_VERSION_MINOR 2
+# define MPM_VERSION_PATCH 1
 #endif
 
 #include <atomic>

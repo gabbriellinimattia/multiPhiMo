@@ -7,7 +7,7 @@ NAME = MultiPhiMo
 # dello zip di release). Per una nuova release basta cambiare questi tre numeri.
 VERSION_MAJOR = 0
 VERSION_MINOR = 2
-VERSION_PATCH = 0
+VERSION_PATCH = 1
 VERSION = $(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)
 
 FILES_DSP = \
@@ -32,7 +32,7 @@ include ../../dpf/Makefile.plugins.mk
 
 # Dati del motore DENTRO il bundle (<bundle>/Contents/Resources/data), letti con getResourcePath.
 # 2026-09-28 (0.2.0): surrogati v5 (native/data/surrogate, export_surrogate.py) + corpus del selettore;
-# pesi MDN e corpus KNN non piu' usati.
+# pesi MDN e corpus KNN non piu' usati. 0.2.1: surrogati di bow/blow/strike/shaker riaddestrati (parametri deboli).
 DATA_SRC = ../../data
 DATA_DST = $(TARGET_DIR)/$(NAME).vst3/Contents/Resources/data
 

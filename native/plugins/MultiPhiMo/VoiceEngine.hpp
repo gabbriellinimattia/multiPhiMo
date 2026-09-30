@@ -489,7 +489,7 @@ private:
                     if (req.scale.active) {
                         // slot di "freq" cercato per nome (noise: non e' il primo)
                         for (size_t i = 0; i < excVec.size(); ++i)
-                            if (excSpec.params[i].name == "freq") {
+                            if (std::strcmp(excSpec.params[i].name, "freq") == 0) {  // era == su const char* (confronto di puntatori)
                                 const float base = (req.scale.overrideNoteMidi >= 0)
                                     ? midiNoteToFreq(req.scale.overrideNoteMidi, req.scale.a4) : excVec[i];
                                 excVec[i] = quantizeFreqToScale(base, req.scale.scaleIndex, req.scale.a4, req.scale.custom);

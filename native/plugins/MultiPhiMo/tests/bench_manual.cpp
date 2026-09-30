@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
     const int N = argc > 3 ? std::atoi(argv[3]) : 20;
     FILE* f = std::fopen(argv[2], "w");
     if (!f) { std::printf("impossibile scrivere %s\n", argv[2]); return 1; }
-    std::fprintf(f, "multiPhiMo 0.2.0 -- prestazioni del motore C++ (rete v5 + ricerca reale), %d target raggiungibili per eccitatore\n", N);
+    std::fprintf(f, "multiPhiMo 0.2.1 -- prestazioni del motore C++ (rete v5 + ricerca reale), %d target raggiungibili per eccitatore\n", N);
     std::fprintf(f, "Errore per descrittore: |misurato - richiesto| / (p95 - p5 del descrittore per quell'eccitatore), in %%.\n");
     std::fprintf(f, "Colonne: rete = prima nota (stima della rete); +10 / +30 = dopo 10 / 30 render di ricerca reale.\n");
     std::fprintf(f, "Tempi (mediana, un core): ritardo della prima nota (risoluzione + render) e tempo per arrivare a 10 / 30 prove.\n\n");

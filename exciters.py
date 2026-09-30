@@ -247,7 +247,7 @@ def pluck(duration=2.0, sr=SR, freq=220.0, pluck_position=0.2, pluck_hardness=0.
 # ---------------- 5. SHAKER ----------------
 
 def shaker(duration=1.5, sr=SR, freq=800.0, n_particles=50, energy=0.7,
-           decay_time=0.8, material=0.3):
+           decay_time=0.8, material=0.3, seed=0):
     """
     PhISM/PhISEM (Cook 1996-97): collisioni stocastiche di particelle (tasso legato a
     n_particles ed energia residua, approssimazione tipo Poisson) in una cavita' risonante
@@ -258,16 +258,19 @@ def shaker(duration=1.5, sr=SR, freq=800.0, n_particles=50, energy=0.7,
     energy: 0-1, energia iniziale della "shakata".
     decay_time: secondi, costante di decadimento dell'energia del sistema.
     material: 0-1, inarmonicita' dei modi della cavita'/guscio.
+    2026-09-28 (diag_fix_probe.py, energy 2.1 -> 8.9 dB): RNG col seme (render deterministico); energy anche = durezza degli
+    urti, ampiezze modali k^(-3*(1-energy)).
     """
     n = int(duration * sr)
     t = np.arange(n) / sr
     sys_energy = energy * np.exp(-t / max(decay_time, 0.01))
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(seed)
     prob = np.clip(n_particles / 800.0 * sys_energy, 0.0, 0.9)
     hits = rng.random(n) < prob
     impulses = np.where(hits, rng.choice([-1.0, 1.0], size=n) * np.sqrt(sys_energy + EPS), 0.0)
     ratios = [1.0, 1.8 + material, 2.6 + 2 * material, 3.4 + 3 * material]
-    return _peak_normalize(_modal_bank(impulses, freq, ratios, 0.05, sr=sr))
+    amps = np.arange(1, len(ratios) + 1, dtype=np.float64) ** (-3.0 * (1.0 - energy))
+    return _peak_normalize(_modal_bank(impulses, freq, ratios, 0.05, amps=amps, sr=sr))
 
 
 # ---------------- 6. NOISE ----------------
@@ -828,16 +831,18 @@ def _ap_pd(c, w0):
 
 
 def bow(duration=1.5, sr=SR, freq=220.0, bow_force=0.5, bow_velocity=0.35,
-        bow_position=0.12, brightness=0.5, damping=0.9997):
+        bow_position=0.12, brightness=0.5, t60=2.0):
     """v2 (dopo il collaudo r1: la correzione del solo ritardo NON bastava, 83-92% NaN): guida d'onda di corda sfregata a
     DUE linee (nut/ponte, riflessioni invertite = loop non invertente, periodo = sr/freq) + tabella di attrito
     (Smith 1986; struttura STK Bowed): moto di Helmholtz stabile invece del "bang-bang" a periodo doppio.
     Ritardo di loop totale = Nn + Nb + allpass + ritardo DC del passa-basso al ponte = sr/freq.
     bow_position = punto d'arco (frazione della lunghezza: Nb = pos*Ntot); brightness = 1 - polo del passa-basso al ponte;
-    damping = guadagno per giro; bow_force -> pendenza tabella (5-4*f); bow_velocity -> velocita' arco (0.02+0.2*v)."""
+    t60 = s, T60 della corda (2026-09-28, era damping = guadagno per giro 0.995-0.9999, inerte: diag_param_weak.py):
+    guadagno per giro = 10^(-3/(t60*freq)); bow_force -> pendenza tabella (5-4*f); bow_velocity -> velocita' arco (0.02+0.2*v)."""
     n = int(duration * sr)
     bf, bv = _as_traj(bow_force, n), _as_traj(bow_velocity, n)
-    br, dm = _as_traj(brightness, n), _as_traj(damping, n)
+    br = _as_traj(brightness, n)
+    dm = 10.0 ** (-3.0 / (np.maximum(_as_traj(t60, n), 1e-3) * freq))
     p = 0.7 * (1.0 - np.clip(br, 0.0, 1.0))
     p_mean = float(np.mean(p))
     w0 = 2.0 * np.pi * freq / sr
@@ -922,7 +927,8 @@ def pluck(duration=2.0, sr=SR, freq=220.0, pluck_position=0.2, pluck_hardness=0.
 
 
 def strike(duration=1.0, sr=SR, freq=220.0, impact_velocity=0.8, hammer_mass=0.02,
-           hammer_stiffness=5e7, nonlinearity=1.5, material=0.3, size_damping=0.4, inharm_scale=0.1):
+           hammer_stiffness=5e7, nonlinearity=1.5, material=0.3, size_damping=0.4, inharm_scale=0.5):
+    # 2026-09-28: inharm_scale 0.1 -> 0.5 (material quasi inerte: 1.6 -> 7.3 dB, diag_fix_probe.py)
     v = impact_velocity * 2.0
     x = 0.0
     dt = 1.0 / sr
@@ -949,17 +955,20 @@ def strike(duration=1.0, sr=SR, freq=220.0, impact_velocity=0.8, hammer_mass=0.0
 
 
 def blow(duration=1.5, sr=SR, freq=220.0, mouth_pressure=0.6, reed_stiffness=0.5,
-         breath_noise=0.15, brightness=0.6, damping=0.999, seed=0, hp=0.4):
+         breath_noise=0.15, brightness=0.6, t60=2.0, seed=0, hp=0.4):
     """v2 (baseline: 50-75% NaN a secco: l'unica non linearita' era il clip dell'apertura, oscillava raramente): ancia
     singola su canna cilindrica, tabella d'ancia di Smith/STK Clarinet (rho = clip(0.7 + slope*dp, -1, 1), slope = -0.44 +
     0.26*rigidita'), riflessione invertita in fondo (loop invertente -> periodo = 2*ritardo = sr/freq).
     mouth_pressure 0-1 -> pressione in bocca 0.45-1.0 (sempre sopra la soglia di oscillazione); breath_noise -> rumore di
-    turbolenza 0.25*b; brightness = 1 - polo del passa-basso (ritardo compensato); damping = guadagno per giro; seed = RNG."""
+    turbolenza 0.25*b; brightness = 1 - polo del passa-basso (ritardo compensato); seed = RNG.
+    t60 = s, T60 della canna (2026-09-28, era damping = guadagno per passaggio, inerte): il guadagno si applica 2 volte per
+    periodo -> 10^(-3/(2*t60*freq))."""
     n = int(duration * sr)
     mp = 0.45 + 0.55 * np.clip(_as_traj(mouth_pressure, n), 0.0, 1.0)
     slope = -0.44 + 0.26 * np.clip(_as_traj(reed_stiffness, n), 0.0, 1.0)
     bn = 0.25 * _as_traj(breath_noise, n)
-    br, dm = _as_traj(brightness, n), _as_traj(damping, n)
+    br = _as_traj(brightness, n)
+    dm = 10.0 ** (-3.0 / (2.0 * np.maximum(_as_traj(t60, n), 1e-3) * freq))
     p = 0.7 * (1.0 - np.clip(br, 0.0, 1.0))
     p_mean = float(np.mean(p))
     w0 = 2.0 * np.pi * freq / sr
@@ -1197,9 +1206,9 @@ EXCITERS = {
 # range dei suoni reali). shaker gia' copriva la distribuzione osservata, invariato.
 PARAM_RANGES = {
     "bow": dict(freq=(65, 2000), bow_force=(0.05, 1.0), bow_velocity=(0.05, 1.0),
-                bow_position=(0.02, 0.45), brightness=(0.1, 0.95), damping=(0.995, 0.9999)),  # max 0.45: a 0.5 sub-armonica -1200 c
+                bow_position=(0.02, 0.45), brightness=(0.1, 0.95), t60=(0.05, 5.0)),  # max 0.45: a 0.5 sub-armonica -1200 c
     "blow": dict(freq=(55, 1200), mouth_pressure=(0.1, 1.0), reed_stiffness=(0.0, 1.0),
-                 breath_noise=(0.0, 0.6), brightness=(0.1, 0.95), damping=(0.99, 0.9999)),
+                 breath_noise=(0.0, 0.6), brightness=(0.1, 0.95), t60=(0.05, 5.0)),
     "strike": dict(freq=(65, 2400), impact_velocity=(0.1, 1.0), hammer_mass=(0.001, 0.1),
                    hammer_stiffness=(1e5, 1e9), nonlinearity=(1.0, 2.5), material=(0.0, 1.0),
                    size_damping=(0.0, 1.0)),

@@ -134,12 +134,12 @@ inline const std::map<std::string, AgentSpec>& agentSpecs() {
         add("bow", false, {
             {"freq", 65, 2000, true}, {"bow_force", 0.05f, 1.0f, false},
             {"bow_velocity", 0.05f, 1.0f, false}, {"bow_position", 0.02f, 0.45f, false},  // 0.5->0.45 (exciters.py 24/9: a 0.5 sub-armonica)
-            {"brightness", 0.1f, 0.95f, false}, {"damping", 0.995f, 0.9999f, false},
+            {"brightness", 0.1f, 0.95f, false}, {"t60", 0.05f, 5.0f, true},  // 2026-09-28: era damping
         });
         add("blow", false, {
             {"freq", 55, 1200, true}, {"mouth_pressure", 0.1f, 1.0f, false},
             {"reed_stiffness", 0.0f, 1.0f, false}, {"breath_noise", 0.0f, 0.6f, false},
-            {"brightness", 0.1f, 0.95f, false}, {"damping", 0.99f, 0.9999f, false},
+            {"brightness", 0.1f, 0.95f, false}, {"t60", 0.05f, 5.0f, true},  // 2026-09-28: era damping
         });
         add("strike", true, {
             {"freq", 65, 2400, true}, {"impact_velocity", 0.1f, 1.0f, false},

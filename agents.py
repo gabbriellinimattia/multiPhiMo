@@ -141,6 +141,7 @@ def _nan_safe_stats(X):
 # nessuna collisione tra i due vocabolari, safe da tenere in un unico set.
 LOG_PARAMS = {
     "freq", "hammer_stiffness", "coupling_rate", "n_particles", "rate", "gate_rate", "ps", "fold_q", "kc_scale",  # eccitatori
+    "t60",                                                           # bow/blow (2026-09-28, era damping)
     "size", "thickness", "density", "stiffness", "loss",              # risonatore
     "radius", "ortho", "cavity", "hole", "speed", "beat", "beat",                      # risonatore tube/soundboard/chaotic (2026-09-21)
 }

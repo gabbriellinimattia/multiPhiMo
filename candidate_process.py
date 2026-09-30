@@ -57,8 +57,8 @@ SUSTAIN_TRIM_S = 0.22
 MORPH_EXCITERS_B = {"bow", "blow", "chaos", "pluck"}
 MORPH_EXCITERS_A = {"noise"}
 MORPH_B_TRAJ_PARAMS = {
-    "bow": ("bow_force", "bow_velocity", "brightness", "damping"),
-    "blow": ("mouth_pressure", "reed_stiffness", "breath_noise", "brightness", "damping"),
+    "bow": ("bow_force", "bow_velocity", "brightness", "t60"),
+    "blow": ("mouth_pressure", "reed_stiffness", "breath_noise", "brightness", "t60"),
     "chaos": ("bifurcation", "brightness", "damping"),
     "pluck": ("decay_time", "dispersion"),
 }

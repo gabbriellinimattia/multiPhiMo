@@ -142,12 +142,14 @@ inline std::vector<double> harmTone(double freq, int n, int sr, const std::vecto
     return y;
 }
 
-// exciters.py bow() (v2 dal 25/9, vedi sotto). bow_force/bow_velocity/bow_position/brightness/damping qui sono
+// exciters.py bow() (v2 dal 25/9, vedi sotto). bow_force/bow_velocity/bow_position/brightness/t60 qui sono
 // SEMPRE scalari (in produzione i parametri sono costanti per nota, MDN predict() non
 // produce traiettorie -- la "morphing B" di agents.py/_as_traj non e' portata).
 inline std::vector<float> bow(double duration, double freq, double bowForce, double bowVelocity,
-                               double bowPosition, double brightness, double damping,
+                               double bowPosition, double brightness, double t60,
                                int sr = kResonatorSR) {
+    // 2026-09-28: t60 (s) sostituisce damping (guadagno per giro, inerte): guadagno per giro = 10^(-3/(t60*freq))
+    const double damping = std::pow(10.0, -3.0 / (std::max(t60, 1e-3) * freq));
     // exciters.py bow() v2 (pitch per costruzione, 24/9): guida d'onda a DUE linee (nut/ponte,
     // riflessioni invertite = loop non invertente, periodo = sr/freq) + tabella d'attrito
     // (Smith 1986, struttura STK Bowed). Ritardo di loop = Nn + Nb + allpass di accordatura +
@@ -191,7 +193,7 @@ inline std::vector<float> bow(double duration, double freq, double bowForce, dou
 inline std::vector<float> strike(double duration, double freq, double impactVelocity,
                                   double hammerMass, double hammerStiffness, double nonlinearity,
                                   double material, double sizeDamping, int sr = kResonatorSR,
-                                  double inharmScale = 0.1) {
+                                  double inharmScale = 0.5) {  // 2026-09-28: 0.1 -> 0.5 (material quasi inerte)
     double v = impactVelocity * 2.0;
     double x = 0.0;
     double dt = 1.0 / sr;
@@ -217,7 +219,7 @@ inline std::vector<float> strike(double duration, double freq, double impactVelo
     for (int i = 0; i < copyLen; ++i) xIn[i] = forces[i];
 
     // pitch per costruzione (exciters.py 24/9): rapporti quasi armonici scalati da
-    // inharm_scale (0.1), modi oltre 0.45*sr scartati, ampiezze 1/k sui modi tenuti.
+    // inharm_scale (0.5), modi oltre 0.45*sr scartati, ampiezze 1/k sui modi tenuti.
     const double s = inharmScale;
     const double all[5] = {1.0, 2.0 + material * 0.6 * s, 3.0 + material * 1.3 * s,
                            4.0 + material * 2.1 * s, 5.0 + material * 3.0 * s};
@@ -251,7 +253,10 @@ inline std::vector<float> shaker(double duration, double freq, double nParticles
         }
     }
     std::vector<double> ratios = {1.0, 1.8 + material, 2.6 + 2.0 * material, 3.4 + 3.0 * material};
-    return normalizePeak09(applyModalBank(impulses, freq, ratios, 0.05));
+    // 2026-09-28: energy = anche durezza degli urti, ampiezze modali k^(-3*(1-energy)) (exciters.py)
+    std::vector<double> amps(ratios.size());
+    for (size_t k = 0; k < amps.size(); ++k) amps[k] = std::pow((double)(k + 1), -3.0 * (1.0 - energy));
+    return normalizePeak09(applyModalBank(impulses, freq, ratios, 0.05, &amps));
 }
 
 // exciters.py blow(): ancia singola non lineare (curva di apertura, stile clarinetto
@@ -261,8 +266,10 @@ inline std::vector<float> shaker(double duration, double freq, double nParticles
 // sensibilita' da retroazione gia' osservata su bow (stesso schema: delay buffer + non
 // linearita' che si autoalimenta).
 inline std::vector<float> blow(double duration, double freq, double mouthPressure, double reedStiffness,
-                                double breathNoise, double brightness, double damping,
+                                double breathNoise, double brightness, double t60,
                                 int sr = kResonatorSR, unsigned rngSeed = 0, double hp = 0.4) {
+    // 2026-09-28: t60 (s) sostituisce damping: guadagno applicato 2 volte per periodo -> 10^(-3/(2*t60*freq))
+    const double damping = std::pow(10.0, -3.0 / (2.0 * std::max(t60, 1e-3) * freq));
     // exciters.py blow() v2 (pitch per costruzione, 24/9): ancia singola su canna cilindrica,
     // tabella d'ancia Smith/STK Clarinet (rho = clip(0.7 + slope*dp, -1, 1)), riflessione
     // invertita (loop invertente -> periodo = 2*ritardo = sr/freq, allpass di accordatura e
