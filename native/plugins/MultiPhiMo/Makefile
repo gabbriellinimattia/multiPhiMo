@@ -10,13 +10,21 @@ VERSION_MINOR = 2
 VERSION_PATCH = 1
 VERSION = $(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)
 
+# 2026-09-30: rete OSC di oscpack per piattaforma. WINDOWS=true va passato a make (build MinGW di
+# .github/workflows/build.yml); su macOS e Linux resta la variante POSIX.
+ifeq ($(WINDOWS),true)
+OSC_PLAT = win32
+else
+OSC_PLAT = posix
+endif
+
 FILES_DSP = \
 	PluginMultiPhiMo.cpp \
 	../../oscpack/osc/OscTypes.cpp \
 	../../oscpack/osc/OscReceivedElements.cpp \
 	../../oscpack/ip/IpEndpointName.cpp \
-	../../oscpack/ip/posix/NetworkingUtils.cpp \
-	../../oscpack/ip/posix/UdpSocket.cpp
+	../../oscpack/ip/$(OSC_PLAT)/NetworkingUtils.cpp \
+	../../oscpack/ip/$(OSC_PLAT)/UdpSocket.cpp
 
 FILES_UI = \
 	UIMultiPhiMo.cpp
@@ -27,10 +35,19 @@ CXXFLAGS += -DMPM_VERSION_MAJOR=$(VERSION_MAJOR) -DMPM_VERSION_MINOR=$(VERSION_M
 CXXFLAGS += -std=c++17
 # DPF forza -ffast-math: ripristina la semantica IEEE (vedi claude/vst3_native_stato.md, bug B punto 7d)
 CXXFLAGS += -fno-fast-math
+ifeq ($(WINDOWS),true)
+# MinGW con -std=c++17 nasconde M_PI (usato in Render.hpp, VoiceEngine.hpp)
+CXXFLAGS += -D_USE_MATH_DEFINES
+endif
 
 include ../../dpf/Makefile.plugins.mk
 
-# Dati del motore DENTRO il bundle (<bundle>/Contents/Resources/data), letti con getResourcePath.
+ifeq ($(WINDOWS),true)
+# oscpack win32: Winsock e timer multimediali
+EXTRA_LIBS += -lws2_32 -lwinmm
+endif
+
+# Dati del motore DENTRO il bundle (<bundle>/Contents/Resources/data, su tutte le piattaforme), letti con getResourcePath.
 # 2026-09-28 (0.2.0): surrogati v5 (native/data/surrogate, export_surrogate.py) + corpus del selettore;
 # pesi MDN e corpus KNN non piu' usati. 0.2.1: surrogati di bow/blow/strike/shaker riaddestrati (parametri deboli).
 DATA_SRC = ../../data
@@ -45,6 +62,7 @@ vst3-data: $(vst3)
 	cp $(DATA_SRC)/surrogate/*.bin $(DATA_DST)/surrogate/
 
 # Release macOS (Apple Silicon, macOS 11+): build da zero, firma ad hoc, zip con plugin + README + licenze.
+# Linux e Windows: .github/workflows/build.yml (GitHub Actions).
 RELEASE_DIR = ../../bin
 RELEASE_ZIP = $(NAME)-$(VERSION)-macOS-arm64.zip
 

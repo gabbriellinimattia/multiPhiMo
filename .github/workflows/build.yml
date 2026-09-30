@@ -1,0 +1,93 @@
+# Build del plugin VST3 per Linux, Windows e macOS (2026-09-30).
+# Avvio: a mano dalla scheda Actions ("Run workflow") oppure con un tag v* (es. v0.2.2).
+# Ogni build produce MultiPhiMo-<versione>-<sistema>.zip (plugin + README + licenze) come artifact;
+# con un tag gli zip vengono anche allegati alla Release di GitHub.
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, target: linux-x86_64 }
+          - { os: ubuntu-22.04, target: windows-x64 }   # compilazione incrociata con MinGW-w64
+          - { os: macos-14,     target: macOS-arm64 }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dipendenze Linux
+        if: matrix.target == 'linux-x86_64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config \
+            libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libdbus-1-dev
+
+      - name: Dipendenze Windows (MinGW-w64)
+        if: matrix.target == 'windows-x64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64
+
+      - name: Versione (dal Makefile)
+        working-directory: native/plugins/MultiPhiMo
+        run: |
+          V=$(awk '/^VERSION_MAJOR/{a=$3} /^VERSION_MINOR/{b=$3} /^VERSION_PATCH/{c=$3} END{print a"."b"."c}' Makefile)
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+          echo "Versione $V"
+
+      - name: Build Linux
+        if: matrix.target == 'linux-x86_64'
+        working-directory: native/plugins/MultiPhiMo
+        run: make vst3 -j2
+
+      - name: Build Windows
+        if: matrix.target == 'windows-x64'
+        working-directory: native/plugins/MultiPhiMo
+        # varianti -posix: servono per std::thread
+        run: |
+          make vst3 -j2 WINDOWS=true \
+            CC=x86_64-w64-mingw32-gcc-posix CXX=x86_64-w64-mingw32-g++-posix AR=x86_64-w64-mingw32-ar
+
+      - name: Build macOS
+        if: matrix.target == 'macOS-arm64'
+        working-directory: native/plugins/MultiPhiMo
+        run: |
+          MACOSX_DEPLOYMENT_TARGET=11.0 make vst3 -j3
+          codesign --force --deep -s - ../../bin/MultiPhiMo.vst3
+          codesign --verify --deep --strict ../../bin/MultiPhiMo.vst3
+
+      - name: Contenuto del bundle
+        run: find native/bin/MultiPhiMo.vst3 -type f | sort
+
+      - name: Zip
+        run: |
+          ZIP="MultiPhiMo-${VERSION}-${{ matrix.target }}.zip"
+          mkdir -p dist/MultiPhiMo
+          cp -R native/bin/MultiPhiMo.vst3 native/README.md native/LICENSE native/THIRD_PARTY_LICENSES.md dist/MultiPhiMo/
+          (cd dist && zip -qry "../$ZIP" MultiPhiMo)
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+          ls -la "$ZIP"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP }}
+          path: ${{ env.ZIP }}
+
+      - name: Allega alla Release (solo con un tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP }}
